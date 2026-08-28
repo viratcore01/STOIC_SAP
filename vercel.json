@@ -1,7 +1,6 @@
 {
   "outputDirectory": ".",
   "cleanUrls": false,
-  "rewrites": [
-    { "source": "/", "destination": "/index.html" }
-  ]
+  "installCommand": "echo 'static site, no install'",
+  "buildCommand": "echo 'static site, no build'"
 }
