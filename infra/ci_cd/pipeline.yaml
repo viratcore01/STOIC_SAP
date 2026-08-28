@@ -1,0 +1,72 @@
+# CCRO Platform CI/CD Pipeline
+# Enforces module boundary linting: /solver and /rag are prohibited from
+# importing anything from /sap_connectors
+
+name: CCRO CI/CD Pipeline
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -e ".[dev]"
+      - run: ruff check .
+      - run: ruff format --check .
+
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -e ".[dev]"
+      - run: mypy --strict agents/ solver/ rag/ schemas/ sap_connectors/ api/
+
+  boundary-lint:
+    runs-on: ubuntu-latest
+    name: Module Boundary Lint (solver/rag must not import sap_connectors)
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check solver/rag imports
+        run: |
+          echo "Checking that solver/ and rag/ never import from sap_connectors/"
+          if grep -r "sap_connectors" solver/ rag/; then
+            echo "❌ VIOLATION: solver/ or rag/ imports from sap_connectors/"
+            echo "This violates the architectural boundary: deterministic/retrieval layers must not write to SAP"
+            exit 1
+          fi
+          echo "✅ Module boundaries respected"
+
+  test:
+    runs-on: ubuntu-latest
+    needs: [lint, typecheck, boundary-lint]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -e ".[dev]"
+      - run: pytest tests/unit/ -v --cov=. --cov-report=xml
+      - run: pytest tests/solver_determinism/ -v
+
+  test-integration:
+    runs-on: ubuntu-latest
+    needs: [test]
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - run: pip install -e ".[dev]"
+      - run: pytest tests/integration/ -v

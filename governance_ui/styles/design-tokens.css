@@ -1,0 +1,290 @@
+/**
+ * CCRO Design System — Shared Design Tokens
+ *
+ * Generated via UI/UX Pro Max for:
+ *   Pattern: Enterprise Gateway
+ *   Style: Dark Mode (OLED)
+ *   Industry: Healthcare / Cold Chain Logistics
+ *
+ * Typography: Lexend (headings) + Source Sans 3 (body)
+ * Colors: Deep navy + emerald green CTA
+ */
+
+/* ============================================
+   CSS Custom Properties — Design Tokens
+   ============================================ */
+
+:root {
+  /* ---- Color Palette (Dark Mode OLED) ---- */
+  --ccro-bg-deep: #020617;        /* slati-950 — deepest background */
+  --ccro-bg-primary: #0F172A;     /* slate-900 — card/panel background */
+  --ccro-bg-secondary: #1E293B;   /* slate-800 — elevated surfaces */
+  --ccro-bg-tertiary: #334155;    /* slate-700 — hover states, borders */
+  --ccro-bg-hover: #475569;       /* slate-600 — active/hover */
+
+  --ccro-text-primary: #F8FAFC;   /* slate-50 — primary text */
+  --ccro-text-secondary: #CBD5E1; /* slate-300 — secondary text */
+  --ccro-text-muted: #94A3B8;     /* slate-400 — muted/disabled */
+  --ccro-text-dim: #64748B;       /* slate-500 — very dim */
+
+  --ccro-cta: #22C55E;            /* green-500 — primary CTA, positive */
+  --ccro-cta-hover: #16A34A;      /* green-600 — CTA hover */
+  --ccro-cta-glow: rgba(34, 197, 94, 0.15); /* green glow */
+
+  --ccro-danger: #EF4444;         /* red-500 — error, critical */
+  --ccro-danger-hover: #DC2626;   /* red-600 */
+  --ccro-warning: #F59E0B;        /* amber-500 — warning, caution */
+  --ccro-info: #3B82F6;           /* blue-500 — info, neutral */
+  --ccro-purple: #A855F7;         /* purple-500 — accent */
+
+  /* ---- Border ---- */
+  --ccro-border: #1E293B;
+  --ccro-border-hover: #334155;
+  --ccro-border-focus: #22C55E;
+
+  /* ---- Typography ---- */
+  --ccro-font-heading: 'Lexend', system-ui, -apple-system, sans-serif;
+  --ccro-font-body: 'Source Sans 3', 'Source Sans Pro', system-ui, sans-serif;
+  --ccro-font-mono: 'JetBrains Mono', 'Fira Code', monospace;
+
+  /* ---- Spacing Scale (4px base) ---- */
+  --ccro-space-1: 4px;
+  --ccro-space-2: 8px;
+  --ccro-space-3: 12px;
+  --ccro-space-4: 16px;
+  --ccro-space-5: 20px;
+  --ccro-space-6: 24px;
+  --ccro-space-8: 32px;
+  --ccro-space-10: 40px;
+  --ccro-space-12: 48px;
+
+  /* ---- Border Radius ---- */
+  --ccro-radius-sm: 6px;
+  --ccro-radius-md: 8px;
+  --ccro-radius-lg: 12px;
+  --ccro-radius-xl: 16px;
+  --ccro-radius-full: 9999px;
+
+  /* ---- Shadows (minimal glow for OLED) ---- */
+  --ccro-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --ccro-shadow-md: 0 4px 12px rgba(0, 0, 0, 0.5);
+  --ccro-shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.6);
+  --ccro-shadow-glow: 0 0 20px var(--ccro-cta-glow);
+
+  /* ---- Transitions ---- */
+  --ccro-transition-fast: 150ms ease;
+  --ccro-transition-normal: 250ms ease;
+  --ccro-transition-slow: 350ms ease;
+
+  /* ---- Z-Index Scale ---- */
+  --ccro-z-base: 10;
+  --ccro-z-dropdown: 20;
+  --ccro-z-sticky: 30;
+  --ccro-z-modal: 50;
+  --ccro-z-toast: 60;
+}
+
+/* ============================================
+   Google Fonts Import
+   ============================================ */
+@import url('https://fonts.googleapis.com/css2?family=Lexend:wght@300;400;500;600;700&family=Source+Sans+3:wght@300;400;500;600;700&display=swap');
+
+/* ============================================
+   Global Reset & Base Styles
+   ============================================ */
+*, *::before, *::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  font-size: 16px;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  font-family: var(--ccro-font-body);
+  background-color: var(--ccro-bg-deep);
+  color: var(--ccro-text-primary);
+  line-height: 1.6;
+  min-height: 100vh;
+}
+
+/* ============================================
+   Focus States (Accessibility)
+   ============================================ */
+:focus-visible {
+  outline: 2px solid var(--ccro-border-focus);
+  outline-offset: 2px;
+}
+
+/* ============================================
+   Reduced Motion
+   ============================================ */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ============================================
+   Scrollbar Styling
+   ============================================ */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--ccro-bg-primary);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--ccro-bg-tertiary);
+  border-radius: var(--ccro-radius-full);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--ccro-bg-hover);
+}
+
+/* ============================================
+   Utility Classes
+   ============================================ */
+.ccro-card {
+  background: var(--ccro-bg-primary);
+  border: 1px solid var(--ccro-border);
+  border-radius: var(--ccro-radius-lg);
+  padding: var(--ccro-space-6);
+  transition: border-color var(--ccro-transition-fast),
+              box-shadow var(--ccro-transition-fast);
+}
+
+.ccro-card:hover {
+  border-color: var(--ccro-border-hover);
+}
+
+.ccro-card-elevated {
+  background: var(--ccro-bg-secondary);
+  border: 1px solid var(--ccro-border);
+  border-radius: var(--ccro-radius-lg);
+  padding: var(--ccro-space-6);
+  box-shadow: var(--ccro-shadow-md);
+}
+
+.ccro-btn {
+  font-family: var(--ccro-font-heading);
+  font-weight: 500;
+  font-size: 14px;
+  padding: var(--ccro-space-3) var(--ccro-space-5);
+  border-radius: var(--ccro-radius-md);
+  border: none;
+  cursor: pointer;
+  transition: background-color var(--ccro-transition-fast),
+              box-shadow var(--ccro-transition-fast),
+              transform var(--ccro-transition-fast);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ccro-space-2);
+  min-height: 44px; /* touch target */
+}
+
+.ccro-btn:active {
+  transform: scale(0.98);
+}
+
+.ccro-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.ccro-btn-primary {
+  background: var(--ccro-cta);
+  color: #000;
+}
+
+.ccro-btn-primary:hover:not(:disabled) {
+  background: var(--ccro-cta-hover);
+  box-shadow: var(--ccro-shadow-glow);
+}
+
+.ccro-btn-secondary {
+  background: var(--ccro-bg-secondary);
+  color: var(--ccro-text-primary);
+  border: 1px solid var(--ccro-border);
+}
+
+.ccro-btn-secondary:hover:not(:disabled) {
+  background: var(--ccro-bg-tertiary);
+  border-color: var(--ccro-border-hover);
+}
+
+.ccro-btn-danger {
+  background: var(--ccro-danger);
+  color: #fff;
+}
+
+.ccro-btn-danger:hover:not(:disabled) {
+  background: var(--ccro-danger-hover);
+}
+
+.ccro-label {
+  font-family: var(--ccro-font-heading);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--ccro-text-muted);
+}
+
+.ccro-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 10px;
+  border-radius: var(--ccro-radius-full);
+  font-family: var(--ccro-font-heading);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.ccro-badge-success {
+  background: rgba(34, 197, 94, 0.15);
+  color: var(--ccro-cta);
+  border: 1px solid rgba(34, 197, 94, 0.3);
+}
+
+.ccro-badge-warning {
+  background: rgba(245, 158, 11, 0.15);
+  color: var(--ccro-warning);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+}
+
+.ccro-badge-danger {
+  background: rgba(239, 68, 68, 0.15);
+  color: var(--ccro-danger);
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.ccro-badge-info {
+  background: rgba(59, 130, 246, 0.15);
+  color: var(--ccro-info);
+  border: 1px solid rgba(59, 130, 246, 0.3);
+}
+
+/* Skeleton loading animation */
+@keyframes ccro-pulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 0.8; }
+}
+
+.ccro-skeleton {
+  background: var(--ccro-bg-tertiary);
+  border-radius: var(--ccro-radius-sm);
+  animation: ccro-pulse 2s ease-in-out infinite;
+}

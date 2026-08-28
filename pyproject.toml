@@ -1,0 +1,84 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "ccro-platform"
+version = "0.1.0"
+description = "ColdChain Resilience Orchestrator — DHL Life Sciences & Healthcare"
+requires-python = ">=3.11"
+dependencies = [
+    # Core
+    "fastapi>=0.104.0",
+    "uvicorn[standard]>=0.24.0",
+    "pydantic>=2.5.0",
+    "pydantic-settings>=2.1.0",
+
+    # LangGraph / LangChain
+    "langgraph>=0.0.40",
+    "langchain>=0.1.0",
+    "langchain-openai>=0.0.5",
+    "langchain-community>=0.0.10",
+
+    # AutoGen (for recovery agent debate/negotiation)
+    "pyautogen>=0.2.0",
+
+    # Solver
+    "ortools>=9.8.0",
+    "scipy>=1.11.0",
+    "numpy>=1.25.0",
+
+    # RAG / Vector Store
+    "chromadb>=0.4.18",
+    "sentence-transformers>=2.2.2",
+
+    # SAP OData
+    "odata>=0.5.0",
+    "httpx>=0.25.0",
+
+    # Redis (checkpointer, idempotency)
+    "redis[hiredis]>=5.0.0",
+
+    # PostgreSQL (audit store, state store)
+    "asyncpg>=0.29.0",
+    "sqlalchemy[asyncio]>=2.0.23",
+
+    # WebSocket
+    "websockets>=12.0",
+
+    # Event Mesh / MQTT
+    "paho-mqtt>=1.6.1",
+
+    # Observability
+    "structlog>=23.2.0",
+    "opentelemetry-api>=1.22.0",
+    "opentelemetry-sdk>=1.22.0",
+
+    # Utilities
+    "python-dotenv>=1.0.0",
+    "tenacity>=8.2.0",
+    "orjson>=3.9.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4.0",
+    "pytest-asyncio>=0.23.0",
+    "pytest-cov>=4.1.0",
+    "mypy>=1.7.0",
+    "ruff>=0.1.0",
+    "black>=23.11.0",
+]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+
+[tool.mypy]
+python_version = "3.11"
+strict = true
+plugins = ["pydantic.mypy"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]

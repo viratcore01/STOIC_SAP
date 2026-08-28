@@ -1,0 +1,743 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CCRO — ColdChain Resilience Orchestrator</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Lexend:wght@300;400;500;600;700&family=Source+Sans+3:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    /* ========== Design Tokens ========== */
+    :root {
+      --bg-deep: #020617;
+      --bg-primary: #0F172A;
+      --bg-secondary: #1E293B;
+      --bg-tertiary: #334155;
+      --bg-hover: #475569;
+      --text-primary: #F8FAFC;
+      --text-secondary: #CBD5E1;
+      --text-muted: #94A3B8;
+      --text-dim: #64748B;
+      --cta: #22C55E;
+      --cta-hover: #16A34A;
+      --cta-glow: rgba(34,197,94,0.15);
+      --danger: #EF4444;
+      --danger-hover: #DC2626;
+      --warning: #F59E0B;
+      --info: #3B82F6;
+      --purple: #A855F7;
+      --border: #1E293B;
+      --border-hover: #334155;
+      --font-heading: 'Lexend', system-ui, sans-serif;
+      --font-body: 'Source Sans 3', system-ui, sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+      --radius-md: 8px;
+      --radius-lg: 12px;
+      --shadow-md: 0 4px 12px rgba(0,0,0,0.5);
+      --shadow-glow: 0 0 20px rgba(34,197,94,0.15);
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { font-size: 16px; -webkit-font-smoothing: antialiased; }
+    body {
+      font-family: var(--font-body);
+      background: var(--bg-deep);
+      color: var(--text-primary);
+      line-height: 1.6;
+      min-height: 100vh;
+    }
+    :focus-visible { outline: 2px solid var(--cta); outline-offset: 2px; }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        transition-duration: 0.01ms !important;
+      }
+    }
+
+    /* ========== Layout ========== */
+    .app-shell {
+      display: flex;
+      min-height: 100vh;
+    }
+    .sidebar {
+      width: 260px;
+      background: var(--bg-primary);
+      border-right: 1px solid var(--border);
+      padding: 24px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      flex-shrink: 0;
+    }
+    .sidebar-logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 0 8px 20px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 12px;
+    }
+    .sidebar-logo span {
+      font-family: var(--font-heading);
+      font-size: 16px;
+      font-weight: 700;
+      color: var(--text-primary);
+      letter-spacing: -0.02em;
+    }
+    .sidebar-logo .dot { color: var(--cta); }
+    .nav-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 12px;
+      border-radius: var(--radius-md);
+      font-size: 14px;
+      color: var(--text-muted);
+      cursor: pointer;
+      transition: all 150ms ease;
+      border: 1px solid transparent;
+      font-family: var(--font-body);
+    }
+    .nav-item:hover { background: var(--bg-secondary); color: var(--text-secondary); }
+    .nav-item.active {
+      background: rgba(34,197,94,0.08);
+      color: var(--cta);
+      border-color: rgba(34,197,94,0.2);
+      font-weight: 500;
+    }
+    .nav-item svg { flex-shrink: 0; }
+    .nav-section {
+      font-family: var(--font-heading);
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      color: var(--text-dim);
+      padding: 16px 12px 6px;
+    }
+
+    .main-content {
+      flex: 1;
+      padding: 28px 32px;
+      overflow-y: auto;
+      max-height: 100vh;
+    }
+    .page-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 24px;
+    }
+    .page-title {
+      font-family: var(--font-heading);
+      font-size: 22px;
+      font-weight: 600;
+      color: var(--text-primary);
+    }
+    .page-subtitle {
+      font-size: 13px;
+      color: var(--text-muted);
+      margin-top: 4px;
+    }
+
+    /* ========== Cards ========== */
+    .card {
+      background: var(--bg-primary);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 24px;
+      transition: border-color 150ms ease;
+    }
+    .card:hover { border-color: var(--border-hover); }
+    .card + .card { margin-top: 16px; }
+    .card-title {
+      font-family: var(--font-heading);
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      margin-bottom: 16px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    /* ========== State Indicator ========== */
+    .state-indicator {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 14px 18px;
+      border-radius: 10px;
+      transition: all 250ms ease;
+    }
+    .state-indicator .label {
+      font-family: var(--font-heading);
+      font-size: 15px;
+      font-weight: 600;
+      letter-spacing: 0.02em;
+    }
+
+    /* ========== Gauge ========== */
+    .gauge-wrap { margin-bottom: 20px; }
+    .gauge-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+    .gauge-header .label { font-size: 13px; color: var(--text-muted); font-weight: 500; }
+    .gauge-header .value { font-family: var(--font-heading); font-size: 14px; font-weight: 600; display: flex; align-items: center; gap: 6px; }
+    .gauge-track {
+      height: 6px;
+      background: var(--bg-secondary);
+      border-radius: 3px;
+      overflow: hidden;
+      position: relative;
+    }
+    .gauge-fill {
+      height: 100%;
+      border-radius: 3px;
+      transition: width 600ms ease, background-color 600ms ease;
+    }
+    .gauge-scale { display: flex; justify-content: space-between; margin-top: 6px; }
+    .gauge-scale span { font-size: 11px; color: var(--text-dim); }
+
+    /* ========== Compare Grid ========== */
+    .compare-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px; }
+    .compare-card {
+      padding: 18px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: var(--bg-deep);
+    }
+    .compare-card.active {
+      border: 2px solid var(--cta);
+      background: rgba(34,197,94,0.04);
+    }
+    .compare-card h4 {
+      font-family: var(--font-heading);
+      font-size: 14px;
+      font-weight: 600;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .compare-card p { font-size: 13px; color: var(--text-muted); line-height: 1.5; }
+
+    /* ========== Table ========== */
+    .data-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .data-table th {
+      text-align: left;
+      padding: 10px 12px;
+      font-family: var(--font-heading);
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      color: var(--text-dim);
+      border-bottom: 1px solid var(--border);
+    }
+    .data-table td {
+      padding: 10px 12px;
+      color: var(--text-secondary);
+      border-bottom: 1px solid rgba(30,41,59,0.5);
+    }
+    .data-table td.site-id { font-family: var(--font-heading); font-weight: 500; }
+    .data-table td.mono { font-family: var(--font-mono); font-size: 12px; }
+
+    /* ========== Badges ========== */
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 2px 10px;
+      border-radius: 9999px;
+      font-family: var(--font-heading);
+      font-size: 12px;
+      font-weight: 500;
+    }
+    .badge-success { background: rgba(34,197,94,0.12); color: var(--cta); border: 1px solid rgba(34,197,94,0.25); }
+    .badge-warning { background: rgba(245,158,11,0.12); color: var(--warning); border: 1px solid rgba(245,158,11,0.25); }
+    .badge-danger { background: rgba(239,68,68,0.12); color: var(--danger); border: 1px solid rgba(239,68,68,0.25); }
+    .badge-info { background: rgba(59,130,246,0.12); color: var(--info); border: 1px solid rgba(59,130,246,0.25); }
+
+    /* ========== Buttons ========== */
+    .btn {
+      font-family: var(--font-heading);
+      font-weight: 500;
+      font-size: 14px;
+      padding: 12px 22px;
+      border-radius: var(--radius-md);
+      border: none;
+      cursor: pointer;
+      transition: all 150ms ease;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      min-height: 44px;
+    }
+    .btn:active { transform: scale(0.98); }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+    .btn-primary { background: var(--cta); color: #000; }
+    .btn-primary:hover:not(:disabled) { background: var(--cta-hover); box-shadow: var(--shadow-glow); }
+    .btn-secondary { background: var(--bg-secondary); color: var(--text-primary); border: 1px solid var(--border); }
+    .btn-secondary:hover:not(:disabled) { background: var(--bg-tertiary); border-color: var(--border-hover); }
+    .btn-danger { background: rgba(239,68,68,0.1); color: var(--danger); border: 1px solid rgba(239,68,68,0.25); }
+    .btn-danger:hover:not(:disabled) { background: rgba(239,68,68,0.2); }
+    .btn-group { display: flex; gap: 10px; flex-wrap: wrap; }
+
+    /* ========== Dropped Panel ========== */
+    .dropped-panel {
+      margin-bottom: 24px;
+      padding: 16px 18px;
+      border-radius: 10px;
+      border: 1px solid rgba(239,68,68,0.25);
+      background: rgba(239,68,68,0.05);
+    }
+    .dropped-panel h4 {
+      font-family: var(--font-heading);
+      font-size: 14px;
+      font-weight: 600;
+      margin-bottom: 10px;
+      color: var(--danger);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .dropped-item { font-size: 13px; color: #FCA5A5; margin-bottom: 4px; padding-left: 22px; }
+
+    /* ========== Policy Panel ========== */
+    .policy-panel {
+      margin-bottom: 24px;
+      padding: 18px;
+      border-radius: 10px;
+      border: 1px solid var(--border);
+      background: var(--bg-deep);
+    }
+    .weight-row { display: flex; gap: 16px; margin-bottom: 14px; flex-wrap: wrap; }
+    .weight-item { font-size: 13px; color: var(--text-secondary); }
+    .weight-item strong { font-weight: 600; }
+    .clause-item {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-bottom: 6px;
+      padding-left: 14px;
+      display: flex;
+      align-items: flex-start;
+      gap: 6px;
+      line-height: 1.5;
+    }
+    .clause-item em { color: var(--text-muted); }
+
+    /* ========== Info Banner ========== */
+    .info-banner {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 14px;
+      margin-bottom: 20px;
+      background: rgba(59,130,246,0.06);
+      border: 1px solid rgba(59,130,246,0.2);
+      border-radius: 8px;
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    /* ========== Edit Input ========== */
+    .edit-input {
+      width: 80px;
+      padding: 8px 10px;
+      background: var(--bg-deep);
+      border: 1px solid var(--bg-tertiary);
+      border-radius: 6px;
+      color: var(--text-primary);
+      font-family: var(--font-body);
+      font-size: 13px;
+      outline: none;
+      transition: border-color 150ms ease, box-shadow 150ms ease;
+      min-height: 36px;
+    }
+    .edit-input:focus {
+      border-color: var(--cta);
+      box-shadow: 0 0 0 2px rgba(34,197,94,0.15);
+    }
+    .edit-input.wide { width: 120px; }
+
+    /* ========== Thread Bar ========== */
+    .thread-bar {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 12px;
+      background: var(--bg-deep);
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      margin-top: 16px;
+    }
+    .thread-bar span { font-size: 12px; color: var(--text-dim); font-family: var(--font-mono); }
+
+    /* ========== Toast ========== */
+    .toast {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      padding: 14px 20px;
+      border-radius: 10px;
+      font-family: var(--font-heading);
+      font-size: 14px;
+      font-weight: 500;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      z-index: 100;
+      transform: translateY(80px);
+      opacity: 0;
+      transition: all 300ms ease;
+      pointer-events: none;
+    }
+    .toast.show { transform: translateY(0); opacity: 1; pointer-events: auto; }
+    .toast-success { background: var(--cta); color: #000; }
+    .toast-danger { background: var(--danger); color: #fff; }
+
+    /* ========== Responsive ========== */
+    @media (max-width: 768px) {
+      .sidebar { display: none; }
+      .main-content { padding: 16px; }
+      .compare-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+
+<div class="app-shell">
+  <!-- Sidebar -->
+  <nav class="sidebar" role="navigation" aria-label="Main navigation">
+    <div class="sidebar-logo">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#22C55E" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+        <path d="m9 12 2 2 4-4"/>
+      </svg>
+      <span>CCRO<span class="dot">.</span></span>
+    </div>
+
+    <div class="nav-item active">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
+      Dashboard
+    </div>
+    <div class="nav-item">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>
+      Approvals
+      <span class="badge badge-warning" style="margin-left:auto">1</span>
+    </div>
+    <div class="nav-item">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/><path d="M9 3v18"/></svg>
+      Allocations
+    </div>
+    <div class="nav-item">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+      Audit Log
+    </div>
+
+    <div class="nav-section">System</div>
+    <div class="nav-item">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+      Settings
+    </div>
+  </nav>
+
+  <!-- Main Content -->
+  <main class="main-content">
+    <div class="page-header">
+      <div>
+        <div class="page-title">Governance Dashboard</div>
+        <div class="page-subtitle">ColdChain Resilience Orchestrator — Human-in-the-Loop Control</div>
+      </div>
+      <div class="badge badge-success" style="font-size:12px">
+        <svg width="8" height="8" viewBox="0 0 8 8" fill="currentColor"><circle cx="4" cy="4" r="4"/></svg>
+        All Systems Operational
+      </div>
+    </div>
+
+    <!-- Row 1: Dashboard + State -->
+    <div style="display:grid; grid-template-columns: 1fr 1fr; gap:16px; margin-bottom:16px">
+      <!-- Resilience State -->
+      <div class="card">
+        <div class="card-title">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#CBD5E1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+          Resilience State
+        </div>
+        <div id="stateIndicator" class="state-indicator" style="background:rgba(249,115,22,0.08); border:1px solid rgba(249,115,22,0.25); margin-bottom:16px">
+          <svg id="stateIcon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#F97316" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>
+          <span id="stateLabel" class="label" style="color:#F97316">S3 — RECOVERY CONSTRAINED</span>
+        </div>
+        <!-- Capacity Gauge -->
+        <div class="gauge-wrap">
+          <div class="gauge-header">
+            <span class="label">Capacity Margin</span>
+            <span class="value" id="gaugeValue" style="color:#F59E0B">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+              8.3%
+            </span>
+          </div>
+          <div class="gauge-track">
+            <div id="gaugeFill" class="gauge-fill" style="width:8.3%; background:#F59E0B; box-shadow:0 0 8px rgba(245,158,11,0.3)"></div>
+          </div>
+          <div class="gauge-scale">
+            <span>0%</span><span>15% threshold</span><span>100%</span>
+          </div>
+        </div>
+        <div class="thread-bar">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#64748B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+          <span>Episode: ep-2026-08-28-thermal-drift-001</span>
+        </div>
+      </div>
+
+      <!-- Live Metrics -->
+      <div class="card">
+        <div class="card-title">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#CBD5E1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
+          Live Metrics
+        </div>
+        <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px">
+          <div style="padding:14px; background:var(--bg-deep); border-radius:8px; border:1px solid var(--border)">
+            <div style="font-size:11px; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.05em; margin-bottom:4px; font-family:var(--font-heading)">Active Sites</div>
+            <div style="font-family:var(--font-heading); font-size:24px; font-weight:700; color:var(--text-primary)">7</div>
+          </div>
+          <div style="padding:14px; background:var(--bg-deep); border-radius:8px; border:1px solid var(--border)">
+            <div style="font-size:11px; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.05em; margin-bottom:4px; font-family:var(--font-heading)">Threatened</div>
+            <div style="font-family:var(--font-heading); font-size:24px; font-weight:700; color:#EF4444">3</div>
+          </div>
+          <div style="padding:14px; background:var(--bg-deep); border-radius:8px; border:1px solid var(--border)">
+            <div style="font-size:11px; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.05em; margin-bottom:4px; font-family:var(--font-heading)">Avg Shelf Life</div>
+            <div style="font-family:var(--font-heading); font-size:24px; font-weight:700; color:#F59E0B">18.4h</div>
+          </div>
+          <div style="padding:14px; background:var(--bg-deep); border-radius:8px; border:1px solid var(--border)">
+            <div style="font-size:11px; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.05em; margin-bottom:4px; font-family:var(--font-heading)">Recovery Opts</div>
+            <div style="font-family:var(--font-heading); font-size:24px; font-weight:700; color:var(--info)">4</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Approval Card -->
+    <div class="card" id="approvalCard">
+      <div class="card-title">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#CBD5E1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/></svg>
+        Allocation Approval Card
+        <span class="badge badge-warning" style="margin-left:auto">Awaiting Decision</span>
+      </div>
+
+      <!-- Side-by-side -->
+      <div class="compare-grid">
+        <div class="compare-card">
+          <h4 style="color:#64748B">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/></svg>
+            Do Nothing / Standard Route
+          </h4>
+          <p>Standard cost-minimization TMS routing. No policy-weighted allocation. <strong style="color:#EF4444">2 sites</strong> may lose inventory due to thermal expiry.</p>
+        </div>
+        <div class="compare-card active">
+          <h4 style="color:#22C55E">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="m9 11 3 3L22 4"/></svg>
+            CCRO Policy Allocation
+          </h4>
+          <p>Priority-weighted allocation. <strong style="color:#22C55E">5 sites</strong> covered. Objective value: <strong style="color:#F8FAFC">2.847</strong></p>
+        </div>
+      </div>
+
+      <!-- Allocation Table -->
+      <div class="card-title" style="margin-top:8px">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#CBD5E1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M3 15h18"/><path d="M9 3v18"/></svg>
+        Proposed Allocation
+      </div>
+      <div style="overflow-x:auto">
+        <table class="data-table">
+          <thead><tr><th>Site</th><th>Units</th><th>Vehicle</th><th>Priority (P_i)</th><th>Mass (kg)</th></tr></thead>
+          <tbody>
+            <tr><td class="site-id">CLN-BER-01</td><td>120</td><td class="mono">VH-A1</td><td><span style="color:#22C55E;font-weight:500">0.847</span></td><td>480.0</td></tr>
+            <tr><td class="site-id">CLN-MUC-03</td><td>95</td><td class="mono">VH-A1</td><td><span style="color:#22C55E;font-weight:500">0.791</span></td><td>380.0</td></tr>
+            <tr><td class="site-id">CLN-FRA-02</td><td>80</td><td class="mono">VH-B2</td><td><span style="color:#F59E0B;font-weight:500">0.612</span></td><td>320.0</td></tr>
+            <tr><td class="site-id">CLN-HAM-04</td><td>60</td><td class="mono">VH-B2</td><td><span style="color:#F59E0B;font-weight:500">0.534</span></td><td>240.0</td></tr>
+            <tr><td class="site-id">CLN-STU-05</td><td>45</td><td class="mono">VH-C3</td><td><span style="color:#94A3B8;font-weight:500">0.389</span></td><td>180.0</td></tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Dropped Sites -->
+      <div class="dropped-panel">
+        <h4>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#EF4444" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
+          Dropped Sites (2)
+        </h4>
+        <div class="dropped-item"><strong>CLN-DRE-06</strong>: unreachable_within_shelf_life (5.2h remaining, 22h transit)</div>
+        <div class="dropped-item"><strong>CLN-LEI-07</strong>: unreachable_within_shelf_life (8.1h remaining, 18h transit)</div>
+      </div>
+
+      <!-- Policy Panel -->
+      <div class="policy-panel">
+        <div class="card-title" style="margin-bottom:12px">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#CBD5E1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><line x1="16" x2="8" y1="13" y2="13"/><line x1="16" x2="8" y1="17" y2="17"/></svg>
+          Policy Justification
+        </div>
+        <div class="weight-row">
+          <span class="weight-item"><strong style="color:#22C55E">w1</strong> Clinical Urgency: <span style="font-family:var(--font-heading)">0.520</span></span>
+          <span class="weight-item"><strong style="color:#3B82F6">w2</strong> Operational Simplicity: <span style="font-family:var(--font-heading)">0.180</span></span>
+          <span class="weight-item"><strong style="color:#A855F7">w3</strong> Value Preservation: <span style="font-family:var(--font-heading)">0.300</span></span>
+          <span class="weight-item" style="color:var(--text-dim)">Confidence: 87.3%</span>
+        </div>
+        <div style="font-size:11px; font-weight:600; color:var(--text-dim); margin-bottom:6px; font-family:var(--font-heading); text-transform:uppercase; letter-spacing:0.05em">Cited SOP Clauses</div>
+        <div class="clause-item">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#64748B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;margin-top:2px"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/></svg>
+          <span><strong style="color:var(--text-secondary)">DHL-SOP-HC-2024</strong> &sect;4.2 — <em>Zero-Stock Priority: When remaining shelf life falls below 48h, clinical urgency weighting increases to 0.5+</em> <span style="color:var(--text-dim);font-size:11px">(94% match)</span></span>
+        </div>
+        <div class="clause-item">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#64748B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;margin-top:2px"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/></svg>
+          <span><strong style="color:var(--text-secondary)">DHL-SOP-HC-2024</strong> &sect;7.1 — <em>Cold Chain Emergency: Mandatory human approval required for any allocation modifying standard routing during thermal excursion events</em> <span style="color:var(--text-dim);font-size:11px">(89% match)</span></span>
+        </div>
+        <div class="clause-item">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#64748B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;margin-top:2px"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/></svg>
+          <span><strong style="color:var(--text-secondary)">FDA-21CFR11</strong> &sect;11.10 — <em>All electronic allocation records must maintain attributable, contemporaneous, and immutable audit trails</em> <span style="color:var(--text-dim);font-size:11px">(82% match)</span></span>
+        </div>
+      </div>
+
+      <!-- Action Buttons -->
+      <div class="btn-group">
+        <button class="btn btn-primary" onclick="showToast('Allocation approved! Execution Agent triggered.', 'success')" aria-label="Approve allocation as-is">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="m9 11 3 3L22 4"/></svg>
+          Approve as-is
+        </button>
+        <button class="btn btn-secondary" onclick="toggleEditor()" aria-label="Modify allocation before approving">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
+          Modify &amp; Approve
+        </button>
+        <button class="btn btn-danger" onclick="showToast('Allocation rejected. Requesting alternate plan from Scarcity Engine.', 'danger')" aria-label="Reject allocation">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/></svg>
+          Reject
+        </button>
+      </div>
+    </div>
+
+    <!-- Override Editor (hidden by default) -->
+    <div class="card" id="overrideEditor" style="display:none; margin-top:16px">
+      <div class="card-title">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#CBD5E1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
+        Modify Allocation
+      </div>
+      <p style="font-size:13px; color:var(--text-muted); margin-bottom:16px; line-height:1.5">
+        Modify allocation quantities below. Changes will be re-validated against thermal (C1), capacity (C2), and reachability (C3) constraints before submission.
+      </p>
+      <div style="overflow-x:auto; margin-bottom:4px">
+        <table class="data-table">
+          <thead><tr><th>Site</th><th>Units</th><th>Vehicle</th><th>Priority (P_i)</th></tr></thead>
+          <tbody>
+            <tr>
+              <td class="site-id">CLN-BER-01</td>
+              <td><input class="edit-input" type="number" value="120" aria-label="Allocated units for CLN-BER-01" /></td>
+              <td><input class="edit-input wide" type="text" value="VH-A1" aria-label="Vehicle for CLN-BER-01" /></td>
+              <td><span style="font-family:var(--font-heading);font-size:12px;color:var(--text-dim)" title="Read-only to preserve audit trail">0.847</span></td>
+            </tr>
+            <tr>
+              <td class="site-id">CLN-MUC-03</td>
+              <td><input class="edit-input" type="number" value="95" aria-label="Allocated units for CLN-MUC-03" /></td>
+              <td><input class="edit-input wide" type="text" value="VH-A1" aria-label="Vehicle for CLN-MUC-03" /></td>
+              <td><span style="font-family:var(--font-heading);font-size:12px;color:var(--text-dim)">0.791</span></td>
+            </tr>
+            <tr>
+              <td class="site-id">CLN-FRA-02</td>
+              <td><input class="edit-input" type="number" value="80" aria-label="Allocated units for CLN-FRA-02" /></td>
+              <td><input class="edit-input wide" type="text" value="VH-B2" aria-label="Vehicle for CLN-FRA-02" /></td>
+              <td><span style="font-family:var(--font-heading);font-size:12px;color:var(--text-dim)">0.612</span></td>
+            </tr>
+            <tr>
+              <td class="site-id">CLN-HAM-04</td>
+              <td><input class="edit-input" type="number" value="60" aria-label="Allocated units for CLN-HAM-04" /></td>
+              <td><input class="edit-input wide" type="text" value="VH-B2" aria-label="Vehicle for CLN-HAM-04" /></td>
+              <td><span style="font-family:var(--font-heading);font-size:12px;color:var(--text-dim)">0.534</span></td>
+            </tr>
+            <tr>
+              <td class="site-id">CLN-STU-05</td>
+              <td><input class="edit-input" type="number" value="45" aria-label="Allocated units for CLN-STU-05" /></td>
+              <td><input class="edit-input wide" type="text" value="VH-C3" aria-label="Vehicle for CLN-STU-05" /></td>
+              <td><span style="font-family:var(--font-heading);font-size:12px;color:var(--text-dim)">0.389</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="info-banner">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#3B82F6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+        Priority scores (P_i) are read-only. All modifications will be re-validated against C1 (thermal), C2 (capacity), and C3 (reachability) constraints.
+      </div>
+      <div class="btn-group">
+        <button class="btn btn-primary" onclick="showToast('Modified allocation submitted. Re-validating constraints...', 'success'); toggleEditor();" aria-label="Submit modified allocation">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="m9 11 3 3L22 4"/></svg>
+          Submit Modified Allocation
+        </button>
+        <button class="btn btn-secondary" onclick="toggleEditor()" aria-label="Cancel modification">Cancel</button>
+      </div>
+    </div>
+
+    <!-- State Simulator -->
+    <div class="card" style="margin-top:16px">
+      <div class="card-title">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#CBD5E1" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+        State Simulator
+        <span style="font-size:12px; color:var(--text-dim); font-weight:400; text-transform:none; letter-spacing:0">Click to test state transitions</span>
+      </div>
+      <div class="btn-group">
+        <button class="btn btn-secondary" onclick="setState('S1_STABLE', 1.0)" style="font-size:12px; min-height:36px; padding:8px 14px">S1 Stable</button>
+        <button class="btn btn-secondary" onclick="setState('S2_ABSORBING_DISRUPTION', 0.45)" style="font-size:12px; min-height:36px; padding:8px 14px">S2 Absorbing</button>
+        <button class="btn btn-secondary" onclick="setState('S3_RECOVERY_CONSTRAINED', 0.083)" style="font-size:12px; min-height:36px; padding:8px 14px">S3 Constrained</button>
+        <button class="btn btn-secondary" onclick="setState('S4_RECOVERY_INSUFFICIENT', -0.12)" style="font-size:12px; min-height:36px; padding:8px 14px">S4 Insufficient</button>
+        <button class="btn btn-secondary" onclick="setState('S5_SCARCITY_ALLOCATION', -0.20)" style="font-size:12px; min-height:36px; padding:8px 14px">S5 Scarcity</button>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- Toast Notification -->
+<div id="toast" class="toast toast-success" role="alert" aria-live="polite">
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="m9 11 3 3L22 4"/></svg>
+  <span id="toastMsg"></span>
+</div>
+
+<script>
+  const stateConfig = {
+    S1_STABLE: { label: 'S1 — STABLE', color: '#22C55E', bg: 'rgba(34,197,94,0.08)', border: 'rgba(34,197,94,0.25)' },
+    S2_ABSORBING_DISRUPTION: { label: 'S2 — ABSORBING DISRUPTION', color: '#F59E0B', bg: 'rgba(245,158,11,0.08)', border: 'rgba(245,158,11,0.25)' },
+    S3_RECOVERY_CONSTRAINED: { label: 'S3 — RECOVERY CONSTRAINED', color: '#F97316', bg: 'rgba(249,115,22,0.08)', border: 'rgba(249,115,22,0.25)' },
+    S4_RECOVERY_INSUFFICIENT: { label: 'S4 — RECOVERY INSUFFICIENT', color: '#EF4444', bg: 'rgba(239,68,68,0.08)', border: 'rgba(239,68,68,0.25)' },
+    S5_SCARCITY_ALLOCATION: { label: 'S5 — SCARCITY ALLOCATION', color: '#DC2626', bg: 'rgba(220,38,38,0.1)', border: 'rgba(220,38,38,0.3)' },
+  };
+
+  function setState(state, margin) {
+    const c = stateConfig[state];
+    const el = document.getElementById('stateIndicator');
+    const label = document.getElementById('stateLabel');
+    const fill = document.getElementById('gaugeFill');
+    const gVal = document.getElementById('gaugeValue');
+    el.style.background = c.bg;
+    el.style.borderColor = c.border;
+    label.style.color = c.color;
+    label.textContent = c.label;
+    document.getElementById('stateIcon').setAttribute('stroke', c.color);
+    const pct = Math.max(0, Math.min(100, margin * 100));
+    const mColor = margin > 0.15 ? '#22C55E' : margin > 0 ? '#F59E0B' : '#EF4444';
+    fill.style.width = pct + '%';
+    fill.style.background = mColor;
+    fill.style.boxShadow = '0 0 8px ' + mColor + '40';
+    gVal.style.color = mColor;
+    gVal.innerHTML = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg> ' + (margin * 100).toFixed(1) + '%';
+  }
+
+  function toggleEditor() {
+    const ed = document.getElementById('overrideEditor');
+    ed.style.display = ed.style.display === 'none' ? 'block' : 'none';
+    if (ed.style.display === 'block') ed.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  function showToast(msg, type) {
+    const t = document.getElementById('toast');
+    const m = document.getElementById('toastMsg');
+    t.className = 'toast toast-' + type + ' show';
+    m.textContent = msg;
+    setTimeout(() => t.classList.remove('show'), 3500);
+  }
+</script>
+
+</body>
+</html>

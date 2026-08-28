@@ -1,0 +1,30 @@
+{
+  "queues": [
+    {
+      "name": "ccro/telemetry/ingest",
+      "description": "High-throughput telemetry ingestion from IoT gateways",
+      "protocol": "MQTT",
+      "deliveryGuarantee": "AT_LEAST_ONCE",
+      "maxRetentionSize": "1GB",
+      "ttl": "86400",
+      "plan": "default"
+    },
+    {
+      "name": "ccro/state/transitions",
+      "description": "Internal pub-sub for resilience state changes consumed by Governance UI WebSocket gateway",
+      "protocol": "AMQP",
+      "deliveryGuarantee": "AT_MOST_ONCE",
+      "maxRetentionSize": "100MB",
+      "ttl": "3600",
+      "plan": "default"
+    }
+  ],
+  "mqttBridge": {
+    "enabled": true,
+    "port": 1883,
+    "tlsPort": 8883,
+    "clientId": "ccro-sensing-agent",
+    "keepAliveSeconds": 60,
+    "cleanSession": false
+  }
+}
