@@ -73,7 +73,7 @@ def _solve_test_input(
         priority_scores=priority_scores,
         constraint_result=constraint_result,
         vehicle_capacities=vehicle_capacities,
-        per_unit_mass_kg=1.0,
+        per_unit_mass=1.0,
     )
 
     solver = OrToolsSolver()
