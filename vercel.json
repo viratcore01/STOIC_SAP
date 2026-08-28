@@ -1,10 +1,7 @@
 {
   "outputDirectory": ".",
-  "framework": null,
-  "installCommand": "echo skipping",
-  "buildCommand": "echo skipping",
   "cleanUrls": false,
   "rewrites": [
-    { "source": "/((?!governance_ui/).*)", "destination": "/governance_ui/index.html" }
+    { "source": "/", "destination": "/index.html" }
   ]
 }

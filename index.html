@@ -1,0 +1,805 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CCRO — ColdChain Resilience Orchestrator</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            cs: {
+              bg: '#0F1419',
+              s1: '#161B22',
+              s2: '#1C232D',
+              s3: '#242C3A',
+              border: '#2A3341',
+              text: '#E6EDF3',
+              muted: '#8B9CB3',
+              dim: '#5C6B7F',
+              accent: '#5B9FCF',
+              stable: '#3D8B7A',
+              warn: '#D4A017',
+              crit: '#C23B3B',
+              policy: '#8B7EC8',
+            },
+          },
+          fontFamily: { sans: ['Inter', 'system-ui', 'sans-serif'] },
+          fontSize: {
+            'xxs': ['0.6875rem', { lineHeight: '1rem' }],
+          },
+        },
+      },
+    }
+  </script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { font-family: 'Inter', system-ui, sans-serif; background: #0F1419; color: #E6EDF3; }
+    body { min-height: 100vh; overflow: hidden; }
+    :focus-visible { outline: 1px solid #5B9FCF; outline-offset: 2px; }
+    @media (prefers-reduced-motion: reduce) { * { transition: none !important; animation: none !important; } }
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #2A3341; border-radius: 2px; }
+    ::selection { background: rgba(91,159,207,0.25); }
+    @keyframes pulse-dot { 0%, 100% { opacity: 1; } 50% { opacity: 0.4; } }
+    .pulse-dot { animation: pulse-dot 2s ease-in-out infinite; }
+    @keyframes slide-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 1; transform: translateY(0); } }
+    .slide-in { animation: slide-in 200ms ease-out; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script type="text/babel">
+    const { useState, useEffect, useCallback, useMemo } = React;
+
+    // ─── Data ──────────────────────────────────────────────
+    const STATE_CONFIG = {
+      S1: { label: 'S1', full: 'STABLE', color: '#3D8B7A', bg: 'rgba(61,139,122,0.08)', border: 'rgba(61,139,122,0.2)' },
+      S2: { label: 'S2', full: 'ABSORBING DISRUPTION', color: '#D4A017', bg: 'rgba(212,160,23,0.08)', border: 'rgba(212,160,23,0.2)' },
+      S3: { label: 'S3', full: 'RECOVERY CONSTRAINED', color: '#D4A017', bg: 'rgba(212,160,23,0.1)', border: 'rgba(212,160,23,0.25)' },
+      S4: { label: 'S4', full: 'RECOVERY INSUFFICIENT', color: '#C23B3B', bg: 'rgba(194,59,59,0.08)', border: 'rgba(194,59,59,0.25)' },
+      S5: { label: 'S5', full: 'SCARCITY ALLOCATION', color: '#C23B3B', bg: 'rgba(194,59,59,0.12)', border: 'rgba(194,59,59,0.3)' },
+    };
+    const STATES = ['S1','S2','S3','S4','S5'];
+
+    const SITES = [
+      { id: 'CLN-BER-01', city: 'Berlin', units: 120, vehicle: 'VH-A1', pi: 0.847, mass: 480 },
+      { id: 'CLN-MUC-03', city: 'Munich', units: 95, vehicle: 'VH-A1', pi: 0.791, mass: 380 },
+      { id: 'CLN-FRA-02', city: 'Frankfurt', units: 80, vehicle: 'VH-B2', pi: 0.612, mass: 320 },
+      { id: 'CLN-HAM-04', city: 'Hamburg', units: 60, vehicle: 'VH-B2', pi: 0.534, mass: 240 },
+      { id: 'CLN-STU-05', city: 'Stuttgart', units: 45, vehicle: 'VH-C3', pi: 0.389, mass: 180 },
+    ];
+    const DROPPED = [
+      { id: 'CLN-DRE-06', city: 'Dresden', reason: 'Unreachable within shelf life', detail: '5.2h remaining, 22h transit' },
+      { id: 'CLN-LEI-07', city: 'Leipzig', reason: 'Unreachable within shelf life', detail: '8.1h remaining, 18h transit' },
+    ];
+    const CLAUSES = [
+      { id: 'DHL-SOP-HC-2024 §4.2', text: 'Zero-Stock Priority: When remaining shelf life < 48h, clinical urgency weighting increases to 0.5+', score: 0.94 },
+      { id: 'DHL-SOP-HC-2024 §7.1', text: 'Cold Chain Emergency: Mandatory human approval for any allocation modifying standard routing during thermal excursion', score: 0.89 },
+      { id: 'FDA-21CFR11 §11.10', text: 'All electronic allocation records must maintain attributable, contemporaneous, immutable audit trails', score: 0.82 },
+    ];
+
+    const AUDIT_LOG = [
+      { ts: '2026-08-28T14:22:01Z', event: 'APPROVAL_DECISION', actor: 'ops-manager@dhl.com', thread: 'ep-001', plan: 'A-001', hash: 'a3f8c2d1' },
+      { ts: '2026-08-28T14:21:58Z', event: 'SOLVER_RUN', actor: 'solver@system', thread: 'ep-001', plan: 'A-001', hash: '7b12e9f3' },
+      { ts: '2026-08-28T14:21:55Z', event: 'POLICY_RETRIEVAL', actor: 'policy-agent@system', thread: 'ep-001', plan: 'A-001', hash: 'c4e7b8a2' },
+      { ts: '2026-08-28T14:21:50Z', event: 'STATE_TRANSITION', actor: 'orchestrator@system', thread: 'ep-001', plan: '—', hash: 'd9f13c7e' },
+      { ts: '2026-08-28T14:21:45Z', event: 'SAP_WRITEBACK', actor: 'execution-agent@system', thread: 'ep-002', plan: 'A-002', hash: '2a8cf5d6' },
+      { ts: '2026-08-27T09:15:30Z', event: 'APPROVAL_DECISION', actor: 'ops-manager@dhl.com', thread: 'ep-003', plan: 'A-003', hash: 'e1b4a7c9' },
+    ];
+    const EVENT_COLORS = {
+      APPROVAL_DECISION: '#5B9FCF', SOLVER_RUN: '#8B9CB3', POLICY_RETRIEVAL: '#8B7EC8',
+      STATE_TRANSITION: '#C23B3B', SAP_WRITEBACK: '#3D8B7A',
+    };
+
+    const ALLOCATIONS = [
+      { id: 'A-2026-0828-001', status: 'Pending', sites: 5, units: 400, obj: 2.847, created: '2026-08-28 14:22' },
+      { id: 'A-2026-0827-003', status: 'Executed', sites: 3, units: 210, obj: 1.542, created: '2026-08-27 09:10' },
+      { id: 'A-2026-0826-002', status: 'Executed', sites: 7, units: 580, obj: 3.201, created: '2026-08-26 16:45' },
+      { id: 'A-2026-0825-001', status: 'Rejected', sites: 4, units: 320, obj: 2.103, created: '2026-08-25 11:30' },
+    ];
+
+    // ─── Icons ─────────────────────────────────────────────
+    const Icon = ({ d, size = 16, stroke = 'currentColor', sw = 1.5, fill = 'none' }) => (
+      <svg width={size} height={size} viewBox="0 0 24 24" fill={fill} stroke={stroke} strokeWidth={sw} strokeLinecap="round" strokeLinejoin="round"><path d={d}/></svg>
+    );
+    const Icons = {
+      shield: 'M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z',
+      check: 'm9 12 2 2 4-4',
+      doc: 'M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z',
+      docPoly: 'M14 2 14 8 20 8',
+      grid: 'M3 3h18v18H3z M3 9h18 M3 15h18 M9 3v18',
+      edit: 'M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z',
+      editPath: 'm15 5 4 4',
+      activity: 'M22 12h-4l-3 9L9 3l-3 9H2',
+      warn: 'm21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z',
+      warnLine: 'M12 9v4',
+      warnDot: 'M12 17h.01',
+      octagon: 'M7.86 2 16.14 2 22 7.86 22 16.14 16.14 22 7.86 22 2 16.14 2 7.86 7.86 2',
+      x: 'm15 9-6 6',
+      x2: 'm9 9 6 6',
+      chart: 'M3 3v18h18',
+      chartLine: 'm19 9-5 5-4-4-3 3',
+      settings: 'M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z',
+      settingsCircle: 'M12 12r3',
+      link: 'M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71',
+      link2: 'M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71',
+      info: 'M12 16v-4',
+      infoDot: 'M12 8h.01',
+      circle: 'M12 12m-10 0a10 10 0 1 0 20 0 10 10 0 1 0-20 0',
+      pulse: 'M22 12h-4l-3 9L9 3l-3 9H2',
+      table: 'M3 3h18v18H3z M3 9h18 M3 15h18 M9 3v18',
+    };
+
+    // ─── Components ────────────────────────────────────────
+    function Badge({ children, color = '#8B9CB3', bg, border }) {
+      const bgColor = bg || color + '18';
+      const borderColor = border || color + '30';
+      return (
+        <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium" style={{ color, background: bgColor, border: `1px solid ${borderColor}` }}>
+          {children}
+        </span>
+      );
+    }
+
+    function Sidebar({ page, onNav }) {
+      const items = [
+        { id: 'dashboard', label: 'Dashboard', icon: Icons.shield },
+        { id: 'approvals', label: 'Approvals', icon: Icons.doc, badge: 1 },
+        { id: 'allocations', label: 'Allocations', icon: Icons.grid },
+        { id: 'audit', label: 'Audit Log', icon: Icons.edit },
+      ];
+      const sysItems = [
+        { id: 'settings', label: 'Settings', icon: Icons.settings },
+      ];
+      return (
+        <aside className="w-56 flex-shrink-0 bg-cs-s1 border-r border-cs-border flex flex-col h-screen">
+          {/* Logo */}
+          <div className="px-4 py-4 border-b border-cs-border">
+            <div className="flex items-center gap-2.5">
+              <div className="w-7 h-7 rounded-lg bg-cs-accent/15 flex items-center justify-center">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#5B9FCF" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
+              </div>
+              <div>
+                <span className="text-sm font-semibold text-cs-text tracking-tight">CCRO</span>
+                <span className="text-xxs text-cs-dim ml-1.5">v0.1</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Navigation */}
+          <nav className="flex-1 py-3 px-2 space-y-0.5 overflow-y-auto" role="navigation" aria-label="Main navigation">
+            {items.map(item => (
+              <button
+                key={item.id}
+                onClick={() => onNav(item.id)}
+                className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors duration-150 cursor-pointer ${
+                  page === item.id
+                    ? 'bg-cs-accent/10 text-cs-accent'
+                    : 'text-cs-muted hover:bg-cs-s2 hover:text-cs-text'
+                }`}
+                aria-current={page === item.id ? 'page' : undefined}
+              >
+                <Icon d={item.icon} size={15} stroke={page === item.id ? '#5B9FCF' : '#5C6B7F'} />
+                <span className="flex-1 text-left">{item.label}</span>
+                {item.badge && (
+                  <span className="min-w-[18px] h-[18px] rounded-full bg-cs-warn/15 border border-cs-warn/30 text-cs-warn text-xs font-medium flex items-center justify-center px-1">
+                    {item.badge}
+                  </span>
+                )}
+              </button>
+            ))}
+
+            <div className="pt-4 pb-1.5 px-3">
+              <span className="text-xxs font-medium text-cs-dim uppercase tracking-wider">System</span>
+            </div>
+
+            {sysItems.map(item => (
+              <button
+                key={item.id}
+                onClick={() => onNav(item.id)}
+                className={`w-full flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm transition-colors duration-150 cursor-pointer ${
+                  page === item.id
+                    ? 'bg-cs-accent/10 text-cs-accent'
+                    : 'text-cs-muted hover:bg-cs-s2 hover:text-cs-text'
+                }`}
+                aria-current={page === item.id ? 'page' : undefined}
+              >
+                <Icon d={item.icon} size={15} stroke={page === item.id ? '#5B9FCF' : '#5C6B7F'} />
+                <span className="flex-1 text-left">{item.label}</span>
+              </button>
+            ))}
+          </nav>
+
+          {/* Footer */}
+          <div className="px-4 py-3 border-t border-cs-border">
+            <div className="flex items-center gap-2">
+              <div className="w-2 h-2 rounded-full bg-cs-stable pulse-dot" />
+              <span className="text-xxs text-cs-dim">All systems operational</span>
+            </div>
+          </div>
+        </aside>
+      );
+    }
+
+    // ─── State Machine Bar ─────────────────────────────────
+    function StateMachine({ current }) {
+      const idx = STATES.indexOf(current);
+      return (
+        <div className="flex items-stretch gap-1 h-10 rounded-lg overflow-hidden border border-cs-border">
+          {STATES.map((s, i) => {
+            const c = STATE_CONFIG[s];
+            const active = i === idx;
+            const past = i < idx;
+            return (
+              <div
+                key={s}
+                className="flex-1 flex items-center justify-center gap-1.5 relative transition-all duration-300"
+                style={{
+                  background: active ? c.bg : past ? c.bg.replace(/[\d.]+\)$/, '0.04)') : 'transparent',
+                  borderBottom: active ? `2px solid ${c.color}` : '2px solid transparent',
+                }}
+              >
+                {active && <div className="w-1.5 h-1.5 rounded-full pulse-dot" style={{ background: c.color }} />}
+                <span className={`text-xxs font-semibold tracking-wider ${active ? '' : past ? 'opacity-50' : 'opacity-30'}`} style={{ color: active ? c.color : '#8B9CB3' }}>
+                  {s}
+                </span>
+                {i === idx && (
+                  <span className="text-xxs text-cs-muted ml-1 hidden lg:inline">{c.full}</span>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      );
+    }
+
+    // ─── Vitals Panel ──────────────────────────────────────
+    function Vital({ label, value, unit, color, sub }) {
+      return (
+        <div className="px-4 py-3 bg-cs-s2 rounded-lg border border-cs-border">
+          <div className="text-xxs font-medium text-cs-dim uppercase tracking-wider mb-1">{label}</div>
+          <div className="flex items-baseline gap-1">
+            <span className="text-2xl font-semibold tabular-nums" style={{ color }}>{value}</span>
+            {unit && <span className="text-xs text-cs-dim">{unit}</span>}
+          </div>
+          {sub && <div className="text-xxs text-cs-dim mt-1">{sub}</div>}
+        </div>
+      );
+    }
+
+    function CapacityGauge({ margin }) {
+      const pct = Math.max(0, Math.min(100, margin * 100));
+      const color = margin > 0.15 ? '#3D8B7A' : margin > 0 ? '#D4A017' : '#C23B3B';
+      const thresholdPct = 15;
+      return (
+        <div className="px-4 py-3 bg-cs-s2 rounded-lg border border-cs-border">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-xxs font-medium text-cs-dim uppercase tracking-wider">Capacity Margin</span>
+            <span className="text-sm font-semibold tabular-nums" style={{ color }}>{(margin * 100).toFixed(1)}%</span>
+          </div>
+          <div className="h-1.5 bg-cs-s3 rounded-full relative overflow-visible">
+            <div className="absolute top-0 left-0 h-full rounded-full transition-all duration-500" style={{ width: `${pct}%`, background: color }} />
+            <div className="absolute top-1/2 -translate-y-1/2 w-px h-3 bg-cs-dim/50" style={{ left: `${thresholdPct}%` }} />
+          </div>
+          <div className="flex justify-between mt-1.5">
+            <span className="text-xxs text-cs-dim">0%</span>
+            <span className="text-xxs text-cs-dim">15%</span>
+            <span className="text-xxs text-cs-dim">100%</span>
+          </div>
+        </div>
+      );
+    }
+
+    // ─── Dashboard Page ────────────────────────────────────
+    function DashboardPage({ state, margin }) {
+      const sc = STATE_CONFIG[state];
+      return (
+        <div className="slide-in space-y-5">
+          {/* Header */}
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-lg font-semibold text-cs-text">Resilience Dashboard</h1>
+              <p className="text-xs text-cs-dim mt-0.5">ColdChain Resilience Orchestrator — Live operational view</p>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-2 h-2 rounded-full bg-cs-stable pulse-dot" />
+              <span className="text-xs text-cs-muted">Connected</span>
+            </div>
+          </div>
+
+          {/* State Machine */}
+          <div className="bg-cs-s1 rounded-xl border border-cs-border p-4">
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-xs font-medium text-cs-muted">Resilience State Machine</span>
+              <div className="flex items-center gap-2 px-2.5 py-1 rounded-md" style={{ background: sc.bg, border: `1px solid ${sc.border}` }}>
+                <div className="w-1.5 h-1.5 rounded-full pulse-dot" style={{ background: sc.color }} />
+                <span className="text-xs font-semibold" style={{ color: sc.color }}>{sc.label} — {sc.full}</span>
+              </div>
+            </div>
+            <StateMachine current={state} />
+          </div>
+
+          {/* Vitals Row */}
+          <div className="grid grid-cols-3 gap-3">
+            <CapacityGauge margin={margin} />
+            <Vital label="Thermal Window" value="18.4" unit="hours" color="#D4A017" sub="Avg remaining across active batches" />
+            <Vital label="Active Sites" value="7" color="#E6EDF3" sub="3 under thermal stress" />
+          </div>
+
+          {/* Disruption Summary */}
+          <div className="bg-cs-s1 rounded-xl border border-cs-border p-4">
+            <div className="flex items-center justify-between mb-4">
+              <span className="text-xs font-medium text-cs-muted">Current Disruption</span>
+              <Badge color="#D4A017">Active</Badge>
+            </div>
+            <div className="grid grid-cols-4 gap-4">
+              <div>
+                <div className="text-xxs text-cs-dim uppercase tracking-wider mb-1">Type</div>
+                <div className="text-sm text-cs-text font-medium">Thermal Drift</div>
+              </div>
+              <div>
+                <div className="text-xxs text-cs-dim uppercase tracking-wider mb-1">Severity</div>
+                <Badge color="#C23B3B">High</Badge>
+              </div>
+              <div>
+                <div className="text-xxs text-cs-dim uppercase tracking-wider mb-1">Episode</div>
+                <div className="text-sm text-cs-muted font-mono text-xs">ep-2026-0828-001</div>
+              </div>
+              <div>
+                <div className="text-xxs text-cs-dim uppercase tracking-wider mb-1">Detected</div>
+                <div className="text-sm text-cs-muted">14:18 UTC</div>
+              </div>
+            </div>
+          </div>
+
+          {/* Key Metrics */}
+          <div className="grid grid-cols-4 gap-3">
+            <div className="bg-cs-s1 rounded-xl border border-cs-border p-4">
+              <div className="text-xxs text-cs-dim uppercase tracking-wider mb-2">Threatened Sites</div>
+              <div className="text-3xl font-semibold text-cs-crit tabular-nums">3</div>
+              <div className="text-xxs text-cs-dim mt-1">of 7 active sites</div>
+            </div>
+            <div className="bg-cs-s1 rounded-xl border border-cs-border p-4">
+              <div className="text-xxs text-cs-dim uppercase tracking-wider mb-2">Recovery Options</div>
+              <div className="text-3xl font-semibold text-cs-accent tabular-nums">4</div>
+              <div className="text-xxs text-cs-dim mt-1">route, warehouse, fleet</div>
+            </div>
+            <div className="bg-cs-s1 rounded-xl border border-cs-border p-4">
+              <div className="text-xxs text-cs-dim uppercase tracking-wider mb-2">Pending Allocations</div>
+              <div className="text-3xl font-semibold text-cs-warn tabular-nums">1</div>
+              <div className="text-xxs text-cs-dim mt-1">awaiting human approval</div>
+            </div>
+            <div className="bg-cs-s1 rounded-xl border border-cs-border p-4">
+              <div className="text-xxs text-cs-dim uppercase tracking-wider mb-2">Audit Chain</div>
+              <div className="text-3xl font-semibold text-cs-stable tabular-nums">OK</div>
+              <div className="text-xxs text-cs-dim mt-1">integrity verified</div>
+            </div>
+          </div>
+
+          {/* State Simulator */}
+          <div className="bg-cs-s1 rounded-xl border border-cs-border p-4">
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-xs font-medium text-cs-muted">State Simulator</span>
+              <span className="text-xxs text-cs-dim">Click to transition</span>
+            </div>
+            <div className="flex gap-2">
+              {STATES.map(s => (
+                <button
+                  key={s}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors duration-150 cursor-pointer border ${
+                    state === s
+                      ? 'border-cs-accent/40 bg-cs-accent/10 text-cs-accent'
+                      : 'border-cs-border bg-cs-s2 text-cs-muted hover:bg-cs-s3 hover:text-cs-text'
+                  }`}
+                  onClick={() => window.__setSimState(s)}
+                >
+                  {s} {STATE_CONFIG[s].full.split(' ')[0]}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // ─── Approval Card Page ────────────────────────────────
+    function ApprovalCardPage() {
+      const [showEditor, setShowEditor] = useState(false);
+      const totalFulfillment = SITES.reduce((s, a) => s + a.pi * a.units, 0);
+
+      return (
+        <div className="slide-in space-y-5">
+          {/* Header */}
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-lg font-semibold text-cs-text">Allocation Approval</h1>
+              <p className="text-xs text-cs-dim mt-0.5">Human-in-the-loop decision for scarce cold-chain inventory</p>
+            </div>
+            <Badge color="#D4A017">Awaiting Decision</Badge>
+          </div>
+
+          {/* Side-by-Side Comparison */}
+          <div className="grid grid-cols-2 gap-4">
+            {/* Do Nothing */}
+            <div className="bg-cs-s1 rounded-xl border border-cs-border p-5">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="w-5 h-5 rounded-md bg-cs-s3 flex items-center justify-center">
+                  <Icon d={Icons.x} size={12} stroke="#5C6B7F" />
+                </div>
+                <span className="text-sm font-medium text-cs-dim">Do Nothing / Standard Route</span>
+              </div>
+              <p className="text-xs text-cs-dim leading-relaxed mb-4">
+                Standard cost-minimization TMS routing. No policy-weighted allocation applied.
+              </p>
+              <div className="space-y-2.5">
+                <div className="flex justify-between text-xs">
+                  <span className="text-cs-dim">Sites at risk</span>
+                  <span className="text-cs-crit font-medium">2 dropped</span>
+                </div>
+                <div className="flex justify-between text-xs">
+                  <span className="text-cs-dim">Inventory preserved</span>
+                  <span className="text-cs-text font-medium">350 units</span>
+                </div>
+                <div className="flex justify-between text-xs">
+                  <span className="text-cs-dim">Spoilage cost</span>
+                  <span className="text-cs-crit font-medium">€ 84,200</span>
+                </div>
+              </div>
+            </div>
+
+            {/* CCRO Allocation */}
+            <div className="rounded-xl p-5" style={{ background: 'rgba(91,159,207,0.04)', border: '1px solid rgba(91,159,207,0.15)' }}>
+              <div className="flex items-center gap-2 mb-3">
+                <div className="w-5 h-5 rounded-md bg-cs-accent/15 flex items-center justify-center">
+                  <Icon d={Icons.check} size={12} stroke="#5B9FCF" />
+                </div>
+                <span className="text-sm font-medium text-cs-accent">CCRO Policy Allocation</span>
+              </div>
+              <p className="text-xs text-cs-muted leading-relaxed mb-4">
+                Priority-weighted allocation with policy justification. Optimised for clinical urgency.
+              </p>
+              <div className="space-y-2.5">
+                <div className="flex justify-between text-xs">
+                  <span className="text-cs-muted">Sites covered</span>
+                  <span className="text-cs-accent font-medium">5 of 7</span>
+                </div>
+                <div className="flex justify-between text-xs">
+                  <span className="text-cs-muted">Units allocated</span>
+                  <span className="text-cs-text font-medium">400 units</span>
+                </div>
+                <div className="flex justify-between text-xs">
+                  <span className="text-cs-muted">Spoilage avoided</span>
+                  <span className="text-cs-stable font-medium">€ 127,500</span>
+                </div>
+                <div className="flex justify-between text-xs">
+                  <span className="text-cs-muted">Objective value</span>
+                  <span className="text-cs-text font-medium tabular-nums">{totalFulfillment.toFixed(3)}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Allocation Table */}
+          <div className="bg-cs-s1 rounded-xl border border-cs-border overflow-hidden">
+            <div className="px-5 py-3 border-b border-cs-border flex items-center justify-between">
+              <span className="text-xs font-medium text-cs-muted">Proposed Allocation</span>
+              <span className="text-xxs text-cs-dim">{SITES.length} sites &middot; {SITES.reduce((s,a)=>s+a.units,0)} units</span>
+            </div>
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b border-cs-border">
+                  <th className="text-left px-5 py-2.5 text-xxs font-medium text-cs-dim uppercase tracking-wider">Site</th>
+                  <th className="text-right px-5 py-2.5 text-xxs font-medium text-cs-dim uppercase tracking-wider">Units</th>
+                  <th className="text-left px-5 py-2.5 text-xxs font-medium text-cs-dim uppercase tracking-wider">Vehicle</th>
+                  <th className="text-right px-5 py-2.5 text-xxs font-medium text-cs-dim uppercase tracking-wider">P<sub>i</sub></th>
+                  <th className="text-right px-5 py-2.5 text-xxs font-medium text-cs-dim uppercase tracking-wider">Mass (kg)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {SITES.map((s, i) => (
+                  <tr key={s.id} className={`border-b border-cs-border/50 ${i === SITES.length - 1 ? 'border-b-0' : ''}`}>
+                    <td className="px-5 py-2.5">
+                      <span className="font-medium text-cs-text">{s.id}</span>
+                      <span className="text-cs-dim ml-1.5">{s.city}</span>
+                    </td>
+                    <td className="text-right px-5 py-2.5 tabular-nums text-cs-text font-medium">{s.units}</td>
+                    <td className="px-5 py-2.5 text-cs-muted font-mono text-xxs">{s.vehicle}</td>
+                    <td className="text-right px-5 py-2.5 tabular-nums font-medium" style={{ color: s.pi > 0.7 ? '#3D8B7A' : s.pi > 0.5 ? '#5B9FCF' : '#8B9CB3' }}>{s.pi.toFixed(3)}</td>
+                    <td className="text-right px-5 py-2.5 tabular-nums text-cs-muted">{s.mass}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Dropped Sites */}
+          {DROPPED.length > 0 && (
+            <div className="rounded-xl border p-4" style={{ background: 'rgba(194,59,59,0.04)', borderColor: 'rgba(194,59,59,0.15)' }}>
+              <div className="flex items-center gap-2 mb-3">
+                <Icon d={Icons.warn} size={14} stroke="#C23B3B" />
+                <span className="text-xs font-medium text-cs-crit">Dropped Sites ({DROPPED.length})</span>
+              </div>
+              <div className="space-y-2">
+                {DROPPED.map(d => (
+                  <div key={d.id} className="flex items-start gap-3 text-xs pl-5">
+                    <span className="font-medium text-cs-crit/80">{d.id}</span>
+                    <span className="text-cs-dim">{d.reason}</span>
+                    <span className="text-cs-dim/60">{d.detail}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Policy Citations */}
+          <div className="bg-cs-s1 rounded-xl border border-cs-border p-4">
+            <div className="flex items-center justify-between mb-3">
+              <span className="text-xs font-medium text-cs-muted">Policy Justification</span>
+              <span className="text-xxs text-cs-dim">Confidence: 87.3%</span>
+            </div>
+            <div className="flex gap-2 mb-4">
+              <div className="px-3 py-1.5 rounded-lg bg-cs-s2 border border-cs-border">
+                <span className="text-xxs text-cs-dim">w1</span>
+                <span className="text-xs font-medium text-cs-text ml-1.5 tabular-nums">0.520</span>
+                <span className="text-xxs text-cs-dim ml-1">Clinical</span>
+              </div>
+              <div className="px-3 py-1.5 rounded-lg bg-cs-s2 border border-cs-border">
+                <span className="text-xxs text-cs-dim">w2</span>
+                <span className="text-xs font-medium text-cs-text ml-1.5 tabular-nums">0.180</span>
+                <span className="text-xxs text-cs-dim ml-1">Operations</span>
+              </div>
+              <div className="px-3 py-1.5 rounded-lg bg-cs-s2 border border-cs-border">
+                <span className="text-xxs text-cs-dim">w3</span>
+                <span className="text-xs font-medium text-cs-text ml-1.5 tabular-nums">0.300</span>
+                <span className="text-xxs text-cs-dim ml-1">Value</span>
+              </div>
+            </div>
+            <div className="space-y-2">
+              {CLAUSES.map(c => (
+                <div key={c.id} className="flex items-start gap-2.5 px-3 py-2 rounded-lg bg-cs-s2 border border-cs-border/50">
+                  <span className="inline-flex items-center px-2 py-0.5 rounded text-xxs font-medium bg-cs-policy/10 text-cs-policy border border-cs-policy/20 flex-shrink-0 mt-0.5">
+                    {c.id}
+                  </span>
+                  <span className="text-xs text-cs-muted leading-relaxed">{c.text}</span>
+                  <span className="text-xxs text-cs-dim flex-shrink-0 mt-0.5">{(c.score * 100).toFixed(0)}%</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Actions */}
+          <div className="flex items-center gap-3">
+            <button
+              className="px-5 py-2.5 rounded-lg text-sm font-medium bg-cs-s3 border border-cs-border text-cs-text hover:bg-cs-s3/80 transition-colors duration-150 cursor-pointer"
+              onClick={() => window.__showToast('Modification editor opened', 'info')}
+            >
+              Modify Allocation
+            </button>
+            <button
+              className="px-5 py-2.5 rounded-lg text-sm font-medium text-cs-crit/80 border border-cs-crit/20 hover:bg-cs-crit/10 transition-colors duration-150 cursor-pointer"
+              onClick={() => window.__showToast('Allocation rejected. Requesting alternate plan.', 'danger')}
+            >
+              Reject
+            </button>
+            <div className="flex-1" />
+            <button
+              className="px-6 py-2.5 rounded-lg text-sm font-semibold text-cs-bg transition-colors duration-150 cursor-pointer"
+              style={{ background: '#5B9FCF', border: '1px solid #5B9FCF' }}
+              onClick={() => window.__showToast('Allocation approved. Execution Agent triggered.', 'success')}
+            >
+              Approve Allocation
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    // ─── Allocations Page ──────────────────────────────────
+    function AllocationsPage() {
+      const statusColor = { Pending: '#D4A017', Executed: '#3D8B7A', Rejected: '#C23B3B' };
+      return (
+        <div className="slide-in space-y-5">
+          <div>
+            <h1 className="text-lg font-semibold text-cs-text">Allocation History</h1>
+            <p className="text-xs text-cs-dim mt-0.5">All allocation plans with status and execution details</p>
+          </div>
+          <div className="bg-cs-s1 rounded-xl border border-cs-border overflow-hidden">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b border-cs-border">
+                  <th className="text-left px-5 py-3 text-xxs font-medium text-cs-dim uppercase tracking-wider">Plan ID</th>
+                  <th className="text-left px-5 py-3 text-xxs font-medium text-cs-dim uppercase tracking-wider">Status</th>
+                  <th className="text-right px-5 py-3 text-xxs font-medium text-cs-dim uppercase tracking-wider">Sites</th>
+                  <th className="text-right px-5 py-3 text-xxs font-medium text-cs-dim uppercase tracking-wider">Units</th>
+                  <th className="text-right px-5 py-3 text-xxs font-medium text-cs-dim uppercase tracking-wider">Objective</th>
+                  <th className="text-left px-5 py-3 text-xxs font-medium text-cs-dim uppercase tracking-wider">Created</th>
+                </tr>
+              </thead>
+              <tbody>
+                {ALLOCATIONS.map((a, i) => (
+                  <tr key={a.id} className={`border-b border-cs-border/50 hover:bg-cs-s2/50 transition-colors ${i === ALLOCATIONS.length - 1 ? 'border-b-0' : ''}`}>
+                    <td className="px-5 py-3 font-mono text-cs-text">{a.id}</td>
+                    <td className="px-5 py-3"><Badge color={statusColor[a.status]}>{a.status}</Badge></td>
+                    <td className="text-right px-5 py-3 tabular-nums text-cs-text">{a.sites}</td>
+                    <td className="text-right px-5 py-3 tabular-nums text-cs-text">{a.units}</td>
+                    <td className="text-right px-5 py-3 tabular-nums text-cs-text">{a.obj.toFixed(3)}</td>
+                    <td className="px-5 py-3 text-cs-muted">{a.created}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      );
+    }
+
+    // ─── Audit Log Page ────────────────────────────────────
+    function AuditPage() {
+      return (
+        <div className="slide-in space-y-5">
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-lg font-semibold text-cs-text">Audit Log</h1>
+              <p className="text-xs text-cs-dim mt-0.5">Immutable, hash-chained records for 21 CFR Part 11 compliance</p>
+            </div>
+            <Badge color="#3D8B7A">Chain Integrity: Verified</Badge>
+          </div>
+          <div className="bg-cs-s1 rounded-xl border border-cs-border overflow-hidden">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="border-b border-cs-border">
+                  <th className="text-left px-5 py-3 text-xxs font-medium text-cs-dim uppercase tracking-wider">Timestamp</th>
+                  <th className="text-left px-5 py-3 text-xxs font-medium text-cs-dim uppercase tracking-wider">Event</th>
+                  <th className="text-left px-5 py-3 text-xxs font-medium text-cs-dim uppercase tracking-wider">Actor</th>
+                  <th className="text-left px-5 py-3 text-xxs font-medium text-cs-dim uppercase tracking-wider">Thread</th>
+                  <th className="text-left px-5 py-3 text-xxs font-medium text-cs-dim uppercase tracking-wider">Plan</th>
+                  <th className="text-left px-5 py-3 text-xxs font-medium text-cs-dim uppercase tracking-wider">Hash (prev)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {AUDIT_LOG.map((r, i) => (
+                  <tr key={i} className={`border-b border-cs-border/50 hover:bg-cs-s2/50 transition-colors ${i === AUDIT_LOG.length - 1 ? 'border-b-0' : ''}`}>
+                    <td className="px-5 py-2.5 font-mono text-xxs text-cs-muted">{r.ts}</td>
+                    <td className="px-5 py-2.5"><Badge color={EVENT_COLORS[r.event]}>{r.event}</Badge></td>
+                    <td className="px-5 py-2.5 text-cs-muted">{r.actor}</td>
+                    <td className="px-5 py-2.5 font-mono text-xxs text-cs-dim">{r.thread}</td>
+                    <td className="px-5 py-2.5 font-mono text-xxs text-cs-dim">{r.plan}</td>
+                    <td className="px-5 py-2.5 font-mono text-xxs text-cs-dim">{r.hash}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      );
+    }
+
+    // ─── Settings Page ─────────────────────────────────────
+    function SettingsPage() {
+      const settings = [
+        { label: 'S2 → S3 Threshold', value: '15%', desc: 'Capacity margin below this triggers S3' },
+        { label: 'Handling Buffer', value: '2.0h', desc: 'Added to transit time for C1 check' },
+        { label: 'Solver Time Limit', value: '30s', desc: 'Max CP-SAT solve time per invocation' },
+        { label: 'Policy Prefetch TTL', value: '5min', desc: 'Cache lifetime for S3-prefetched weights' },
+      ];
+      const services = [
+        { name: 'Orchestrator', status: 'Healthy' },
+        { name: 'Solver', status: 'Healthy' },
+        { name: 'Policy Agent', status: 'Healthy' },
+        { name: 'Sensing', status: 'Healthy' },
+        { name: 'Impact', status: 'Healthy' },
+        { name: 'Execution', status: 'Healthy' },
+      ];
+      return (
+        <div className="slide-in space-y-5">
+          <div>
+            <h1 className="text-lg font-semibold text-cs-text">System Settings</h1>
+            <p className="text-xs text-cs-dim mt-0.5">CCRO platform configuration and thresholds</p>
+          </div>
+
+          <div className="bg-cs-s1 rounded-xl border border-cs-border p-5">
+            <span className="text-xs font-medium text-cs-muted">State Machine Thresholds</span>
+            <div className="grid grid-cols-2 gap-3 mt-3">
+              {settings.map(s => (
+                <div key={s.label} className="px-4 py-3 bg-cs-s2 rounded-lg border border-cs-border">
+                  <div className="text-xxs text-cs-dim uppercase tracking-wider mb-1">{s.label}</div>
+                  <div className="text-xl font-semibold text-cs-text tabular-nums">{s.value}</div>
+                  <div className="text-xxs text-cs-dim mt-1">{s.desc}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div className="bg-cs-s1 rounded-xl border border-cs-border p-5">
+            <span className="text-xs font-medium text-cs-muted">SAP Integration</span>
+            <div className="grid grid-cols-2 gap-3 mt-3">
+              <div className="px-4 py-3 bg-cs-s2 rounded-lg border border-cs-border">
+                <div className="text-xxs text-cs-dim uppercase tracking-wider mb-1">S/4HANA Destination</div>
+                <div className="text-xs text-cs-muted font-mono">S4HANA_CCRO_DEST</div>
+              </div>
+              <div className="px-4 py-3 bg-cs-s2 rounded-lg border border-cs-border">
+                <div className="text-xxs text-cs-dim uppercase tracking-wider mb-1">TM Destination</div>
+                <div className="text-xs text-cs-muted font-mono">TM_CCRO_DEST</div>
+              </div>
+            </div>
+          </div>
+
+          <div className="bg-cs-s1 rounded-xl border border-cs-border p-5">
+            <span className="text-xs font-medium text-cs-muted">Agent Services</span>
+            <div className="grid grid-cols-3 gap-3 mt-3">
+              {services.map(s => (
+                <div key={s.name} className="px-4 py-3 bg-cs-s2 rounded-lg border border-cs-border text-center">
+                  <div className="text-xxs text-cs-dim uppercase tracking-wider mb-2">{s.name}</div>
+                  <Badge color="#3D8B7A">{s.status}</Badge>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // ─── Toast ─────────────────────────────────────────────
+    function Toast({ msg, type, onDone }) {
+      useEffect(() => { const t = setTimeout(onDone, 3500); return () => clearTimeout(t); }, []);
+      const color = type === 'success' ? '#3D8B7A' : type === 'danger' ? '#C23B3B' : '#5B9FCF';
+      const bg = type === 'success' ? 'rgba(61,139,122,0.12)' : type === 'danger' ? 'rgba(194,59,59,0.12)' : 'rgba(91,159,207,0.12)';
+      return (
+        <div className="fixed bottom-6 right-6 z-50 slide-in flex items-center gap-2.5 px-4 py-3 rounded-lg text-sm font-medium" style={{ background: bg, border: `1px solid ${color}30`, color }}>
+          <div className="w-1.5 h-1.5 rounded-full" style={{ background: color }} />
+          {msg}
+        </div>
+      );
+    }
+
+    // ─── App ───────────────────────────────────────────────
+    function App() {
+      const [page, setPage] = useState('dashboard');
+      const [simState, setSimState] = useState('S3');
+      const [toast, setToast] = useState(null);
+
+      const margin = useMemo(() => {
+        const map = { S1: 0.85, S2: 0.45, S3: 0.083, S4: -0.12, S5: -0.20 };
+        return map[simState] || 0;
+      }, [simState]);
+
+      // Expose to global for onclick handlers
+      window.__setSimState = setSimState;
+      window.__showToast = (msg, type) => setToast({ msg, type });
+
+      const pages = {
+        dashboard: <DashboardPage state={simState} margin={margin} />,
+        approvals: <ApprovalCardPage />,
+        allocations: <AllocationsPage />,
+        audit: <AuditPage />,
+        settings: <SettingsPage />,
+      };
+
+      return (
+        <div className="flex h-screen bg-cs-bg">
+          <Sidebar page={page} onNav={setPage} />
+          <main className="flex-1 overflow-y-auto">
+            <div className="max-w-6xl mx-auto px-6 py-5">
+              {pages[page]}
+            </div>
+          </main>
+          {toast && <Toast msg={toast.msg} type={toast.type} onDone={() => setToast(null)} />}
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>
