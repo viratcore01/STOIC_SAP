@@ -1,0 +1,9 @@
+{
+  "buildCommand": null,
+  "outputDirectory": "governance_ui",
+  "framework": null,
+  "installCommand": null,
+  "rewrites": [
+    { "source": "/(.*)", "destination": "/index.html" }
+  ]
+}
