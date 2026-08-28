@@ -1,9 +1,10 @@
 {
-  "buildCommand": null,
-  "outputDirectory": "governance_ui",
+  "outputDirectory": ".",
   "framework": null,
-  "installCommand": null,
+  "installCommand": "echo skipping",
+  "buildCommand": "echo skipping",
+  "cleanUrls": false,
   "rewrites": [
-    { "source": "/(.*)", "destination": "/index.html" }
+    { "source": "/((?!governance_ui/).*)", "destination": "/governance_ui/index.html" }
   ]
 }
