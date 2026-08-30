@@ -328,7 +328,10 @@ state = DemoState()
 
 @app.get("/")
 async def root():
-    """Root endpoint — returns available API routes."""
+    """Root endpoint — serves React SPA if available, else API landing page."""
+    index_file = frontend_dist / "index.html"
+    if index_file.exists():
+        return FileResponse(str(index_file))
     return {
         "service": "CCRO Demo Backend",
         "version": "1.0.0",
