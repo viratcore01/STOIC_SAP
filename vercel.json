@@ -1,6 +1,21 @@
 {
+  "builds": [
+    {
+      "src": "api/index.py",
+      "use": "@vercel/python"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/api/(.*)",
+      "dest": "api/index.py"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "api/index.py"
+    }
+  ],
+  "installCommand": "pip install -r requirements.txt",
   "outputDirectory": ".",
-  "cleanUrls": false,
-  "installCommand": "echo 'static site, no install'",
-  "buildCommand": "echo 'static site, no build'"
+  "cleanUrls": true
 }

@@ -1,0 +1,8 @@
+# CCRO Demo Backend — Minimal dependencies for Vercel deployment
+# Only includes what the demo backend + solver actually import.
+# Heavy agent/infra deps (langgraph, chromadb, redis, etc.) are NOT needed.
+fastapi>=0.104.0
+pydantic>=2.5.0
+structlog>=23.2.0
+ortools>=9.8.0
+numpy>=1.25.0
