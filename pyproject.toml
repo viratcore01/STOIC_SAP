@@ -82,6 +82,3 @@ plugins = ["pydantic.mypy"]
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
 testpaths = ["tests"]
-
-[tool.vercel]
-entrypoint = "api/index.py"

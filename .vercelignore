@@ -9,3 +9,4 @@ __pycache__/
 governance_ui/
 demo/frontend/
 dry_run.py
+pyproject.toml
