@@ -38,6 +38,12 @@ interface Topology {
   clinics: any[];
   routes: any[];
   disruptions: any[];
+  maritime?: {
+    total_harbours: number;
+    key_routes: any[];
+    passages: string[];
+    disruption_impact: any[];
+  };
   audit: { chain_hash: string; chain_valid: boolean; chain_length: number };
   state_machine: { current_state: string; capacity_margin_pct: number; total_demand: number; total_capacity: number };
 }
@@ -379,6 +385,32 @@ function LeafletMap({ topology, onMarkerClick, onDisruptionClick }: {
         ).addTo(map);
         line.on('click', () => onMarkerClick({ kind: 'route', data: route }));
       });
+
+      // Maritime routes (from searoute / Eurostat integration)
+      if (topology.maritime?.key_routes) {
+        topology.maritime.key_routes.forEach((mRoute: any) => {
+          if (!mRoute.waypoints || mRoute.waypoints.length < 2) return;
+          const leafletWaypoints = mRoute.waypoints.map((wp: number[]) => [wp[1], wp[0]]);
+          L.polyline(leafletWaypoints, {
+            color: '#4CC9F0',
+            weight: 2.5,
+            opacity: 0.7,
+            dashArray: '12 6',
+          }).addTo(map).bindTooltip(
+            `${mRoute.origin_name} → ${mRoute.destination_name}: ${(mRoute.distance_km / 1000).toFixed(0)}k km, ${(mRoute.duration_hours / 24).toFixed(1)}d`,
+            { className: 'dark-tooltip' }
+          );
+          // Port markers at origin/dest
+          if (leafletWaypoints.length > 0) {
+            L.circleMarker(leafletWaypoints[0], {
+              radius: 5, fillColor: '#4CC9F0', fillOpacity: 0.8, color: '#fff', weight: 1,
+            }).addTo(map).bindTooltip(`🚢 ${mRoute.origin_name}`, { className: 'dark-tooltip' });
+            L.circleMarker(leafletWaypoints[leafletWaypoints.length - 1], {
+              radius: 5, fillColor: '#4CC9F0', fillOpacity: 0.8, color: '#fff', weight: 1,
+            }).addTo(map).bindTooltip(`🚢 ${mRoute.destination_name}`, { className: 'dark-tooltip' });
+          }
+        });
+      }
 
       // Disruptions as pulsing red markers
       (topology.disruptions || []).forEach((d: any) => {

@@ -1342,11 +1342,15 @@ async def get_map_topology():
     audit_hash = state.audit_chain.chain_tip[:16] + "..."
     chain_valid = state.audit_chain.verify_integrity()
 
+    # --- Maritime data ---
+    maritime = _get_maritime_data()
+
     return {
         "hubs": hubs,
         "clinics": clinics,
         "routes": routes,
         "disruptions": disruptions,
+        "maritime": maritime,
         "audit": {
             "chain_hash": audit_hash,
             "chain_valid": chain_valid,
@@ -1359,6 +1363,97 @@ async def get_map_topology():
             "total_capacity": state.total_available_capacity,
         },
     }
+
+
+def _get_maritime_data():
+    """Get maritime topology data using the MaritimeRouter."""
+    try:
+        from agents.recovery_agents.maritime_router import MaritimeRouter
+        router = MaritimeRouter()
+        topology = router.get_maritime_topology()
+        # Compute key routes
+        routes = []
+        key_routes = [
+            ((4.4792, 51.9225), (39.6612, -4.0383), "Rotterdam", "Mombasa"),
+            ((8.6821, 50.1109), (36.8219, -1.2921), "Frankfurt", "Nairobi"),
+            ((4.4792, 51.9225), (121.4737, 31.2304), "Rotterdam", "Shanghai"),
+        ]
+        for origin, dest, o_name, d_name in key_routes:
+            route = router.compute_route(origin, dest, o_name, d_name)
+            routes.append({
+                "origin_name": o_name,
+                "destination_name": d_name,
+                "distance_km": route.distance_km,
+                "duration_hours": route.duration_hours,
+                "fuel_tons": route.fuel_estimate_tons,
+                "cost_usd": route.cost_estimate_usd,
+                "waypoints": route.waypoints[:10],  # first 10 for display
+            })
+        # Disruption impact analysis
+        disruptions_impact = []
+        if state.current_disruption:
+            disrupt_type = "red_sea" if "red" in state.current_disruption.get("name", "").lower() else "panama_drought"
+            impact = router.compute_disruption_impact(
+                (4.4792, 51.9225), (121.4737, 31.2304), disrupt_type
+            )
+            disruptions_impact.append(impact)
+        return {
+            "total_harbours": topology["total_harbours"],
+            "key_routes": routes,
+            "passages": topology["passages"],
+            "disruption_impact": disruptions_impact,
+        }
+    except Exception as e:
+        return {"error": str(e), "total_harbours": 0}
+
+
+@app.get("/api/routes/maritime")
+async def get_maritime_routes(
+    origin_lon: float = 4.4792,
+    origin_lat: float = 51.9225,
+    dest_lon: float = 39.6612,
+    dest_lat: float = -4.0383,
+    restrictions: str = "",
+):
+    """Compute maritime route between two points using searoute.
+
+    Returns GeoJSON-compatible route with distance, duration, and waypoints.
+    """
+    try:
+        from agents.recovery_agents.maritime_router import MaritimeRouter
+        router = MaritimeRouter()
+        restrict_list = [r.strip() for r in restrictions.split(",") if r.strip()] if restrictions else []
+        route = router.compute_route(
+            origin=(origin_lon, origin_lat),
+            destination=(dest_lon, dest_lat),
+            restrictions=restrict_list,
+        )
+        k_alternatives = router.compute_k_alternatives(
+            origin=(origin_lon, origin_lat),
+            destination=(dest_lon, dest_lat),
+            k=3,
+        )
+        return {
+            "route": {
+                "distance_km": route.distance_km,
+                "duration_hours": route.duration_hours,
+                "fuel_tons": route.fuel_estimate_tons,
+                "cost_usd": route.cost_estimate_usd,
+                "waypoints": route.waypoints,
+                "weather": route.weather_condition,
+            },
+            "alternatives": [
+                {
+                    "distance_km": a.distance_km,
+                    "duration_hours": a.duration_hours,
+                    "restrictions": getattr(a, "passage_used", ""),
+                }
+                for a in k_alternatives.alternatives
+            ],
+            "harbours_total": len(router.harbours.ports),
+        }
+    except Exception as e:
+        return {"error": str(e)}
 
 
 @app.get("/health")

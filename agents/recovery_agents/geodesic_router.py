@@ -1,12 +1,15 @@
-"""Geodesic Recovery Routing — Haversine-based transit time and distance calculation.
+"""Geodesic Recovery Routing — Haversine + Maritime-aware transit time calculation.
 
 Uses real geographic coordinates to compute:
 1. Great-circle distances between warehouse hubs, vehicles, and clinic sites
-2. Estimated transit times based on distance and average speed
-3. Route feasibility checks against remaining shelf life (Constraint C1)
-4. Flags infeasible (vehicle, site) pairs for the Scarcity Engine
+2. Maritime routes via searoute when origin/destination are seaports
+3. K-shortest path alternatives for resilience (VISIR-2 concept)
+4. Estimated transit times based on distance, vehicle type, and weather
+5. Route feasibility checks against remaining shelf life (Constraint C1)
+6. Flags infeasible (vehicle, site) pairs for the Scarcity Engine
 
-This replaces placeholder heuristics with physically-grounded routing.
+Integrates Eurostat searoute for realistic maritime routing and
+VISIR-2 concepts for environmental weighting and K-alternatives.
 """
 
 from __future__ import annotations
@@ -16,6 +19,12 @@ from dataclasses import dataclass, field
 from typing import Optional
 
 import structlog
+
+try:
+    from agents.recovery_agents.maritime_router import MaritimeRouter, HarboursDatabase
+    MARITIME_AVAILABLE = True
+except ImportError:
+    MARITIME_AVAILABLE = False
 
 logger = structlog.get_logger(__name__)
 
@@ -139,16 +148,26 @@ class GeodesicRouter:
     """Geodesic recovery router that calculates true transit times and distances.
 
     Uses real geographic coordinates and the Haversine formula to compute
-    physically-grounded route feasibility checks.
+    physically-grounded route feasibility checks. Integrates maritime routing
+    via searoute when applicable.
     """
 
     def __init__(
         self,
         handling_buffer_hours: float = DEFAULT_HANDLING_BUFFER_HOURS,
         locations: dict[str, GeoLocation] | None = None,
+        weather_condition: str = "calm",
     ):
         self.handling_buffer_hours = handling_buffer_hours
         self.locations = locations or LOCATIONS
+        self.weather_condition = weather_condition
+        # Maritime router for seaport-to-seaport routes
+        self._maritime_router = None
+        if MARITIME_AVAILABLE:
+            try:
+                self._maritime_router = MaritimeRouter(weather_condition=weather_condition)
+            except Exception:
+                pass
 
     def compute_route(
         self,
@@ -195,14 +214,51 @@ class GeodesicRouter:
                 reason=f"Unknown destination: {destination_id}",
             )
 
-        # Compute geodesic distance
-        distance_km = haversine_distance(
-            origin.latitude, origin.longitude,
-            destination.latitude, destination.longitude,
-        )
+        # Try maritime routing for seaport-to-seaport routes
+        transit_time = None
+        distance_km = None
+        if self._maritime_router and self._maritime_router.harbours.ports:
+            # Check if both locations are near seaports
+            origin_port = self._maritime_router.harbours.find_nearest_port(
+                origin.latitude, origin.longitude, max_distance_km=100
+            )
+            dest_port = self._maritime_router.harbours.find_nearest_port(
+                destination.latitude, destination.longitude, max_distance_km=100
+            )
+            if origin_port and dest_port:
+                try:
+                    maritime_route = self._maritime_router.compute_route(
+                        origin=(origin_port.lon, origin_port.lat),
+                        destination=(dest_port.lon, dest_port.lat),
+                        origin_name=origin_id,
+                        dest_name=destination_id,
+                    )
+                    # Add last-mile land distance
+                    port_to_origin = haversine_distance(
+                        origin.latitude, origin.longitude,
+                        origin_port.lat, origin_port.lon,
+                    )
+                    port_to_dest = haversine_distance(
+                        destination.latitude, destination.longitude,
+                        dest_port.lat, dest_port.lon,
+                    )
+                    distance_km = maritime_route.distance_km + port_to_origin + port_to_dest
+                    # Maritime duration + last-mile by vehicle
+                    last_mile_time = estimate_transit_time(
+                        port_to_origin + port_to_dest, vehicle_type
+                    )
+                    transit_time = maritime_route.duration_hours + last_mile_time
+                except Exception as e:
+                    logger.warning("maritime.fallback", error=str(e))
 
-        # Estimate transit time
-        transit_time = estimate_transit_time(distance_km, vehicle_type)
+        # Fallback to Haversine for land routes
+        if distance_km is None:
+            distance_km = haversine_distance(
+                origin.latitude, origin.longitude,
+                destination.latitude, destination.longitude,
+            )
+        if transit_time is None:
+            transit_time = estimate_transit_time(distance_km, vehicle_type)
 
         # Add handling buffer
         total_time = transit_time + self.handling_buffer_hours

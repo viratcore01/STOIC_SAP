@@ -53,6 +53,17 @@ export const api = {
   // Map topology
   getMapTopology: () => request<any>('/map/topology'),
 
+  // Maritime routes
+  getMaritimeRoutes: (
+    originLon = 4.4792,
+    originLat = 51.9225,
+    destLon = 39.6612,
+    destLat = -4.0383,
+    restrictions = '',
+  ) => request<any>(
+    `/routes/maritime?origin_lon=${originLon}&origin_lat=${originLat}&dest_lon=${destLon}&dest_lat=${destLat}&restrictions=${restrictions}`
+  ),
+
   // Reset
   reset: () => request<any>('/reset', { method: 'POST' }),
 };
