@@ -16,3 +16,7 @@
 .spin {
   animation: spin 1s linear infinite;
 }
+
+/* Hide CesiumJS credit overlay */
+.cesium-viewer-bottom { display: none !important; }
+.cesium-widget-credits { display: none !important; }
