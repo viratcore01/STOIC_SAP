@@ -73,6 +73,7 @@ export default function ResilienceGlobeView({ addToast }: { addToast: (msg: stri
   const [mapSource, setMapSource] = useState('loading');
   const [approving, setApproving] = useState(false);
   const [approved, setApproved] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   // ─── Viewer bootstrap ───────────────────────────────────────────────────
   useEffect(() => {
@@ -80,6 +81,7 @@ export default function ResilienceGlobeView({ addToast }: { addToast: (msg: stri
     let resizeObs: ResizeObserver | null = null;
 
     async function init() {
+      try {
       if (!containerRef.current) return;
 
       if (ION_TOKEN) Cesium.Ion.defaultAccessToken = ION_TOKEN;
@@ -89,7 +91,6 @@ export default function ResilienceGlobeView({ addToast }: { addToast: (msg: stri
         animation: false,
         sceneModePicker: false,
         baseLayerPicker: false,
-        // globe defaults to true (show OSM ellipsoid); Google 3D Tiles replace it
         geocoder: false,
         homeButton: false,
         navigationHelpButton: false,
@@ -97,7 +98,7 @@ export default function ResilienceGlobeView({ addToast }: { addToast: (msg: stri
         infoBox: false,
         selectionIndicator: false,
         shadows: false,
-        contextOptions: { webgl: { alpha: true } },
+        contextOptions: { webgl: { alpha: false } },
       });
 
       if (viewer.scene.skyAtmosphere) {
@@ -105,7 +106,7 @@ export default function ResilienceGlobeView({ addToast }: { addToast: (msg: stri
         viewer.scene.skyAtmosphere.hueShift = -0.02;
       }
       viewer.scene.fog.enabled = true;
-      (viewer as any)._cesiumWidget._creditContainer.style.display = 'none';
+      try { (viewer as any)._cesiumWidget._creditContainer.style.display = 'none'; } catch {}
 
       // Try Google 3D Tiles, fallback to OSM
       let source = 'osm';
@@ -184,6 +185,10 @@ export default function ResilienceGlobeView({ addToast }: { addToast: (msg: stri
       } else {
         handler.destroy();
         viewer.destroy();
+      }
+      } catch (err) {
+        console.error('CesiumJS init failed:', err);
+        setLoadError(String(err));
       }
     }
 
@@ -422,6 +427,12 @@ export default function ResilienceGlobeView({ addToast }: { addToast: (msg: stri
         </span>
       </div>
 
+      {loadError && (
+        <div style={{ position: 'absolute', top: 60, left: '50%', transform: 'translateX(-50%)', background: 'rgba(255,59,59,0.15)', border: '1px solid rgba(255,59,59,0.4)', color: '#FF8A8A', fontSize: 12, padding: '8px 14px', borderRadius: 8, fontFamily: 'monospace', backdropFilter: 'blur(6px)', zIndex: 30 }}>
+          {loadError}
+        </div>
+      )}
+
       {/* HUD */}
       {hudEntity && (
         <div style={S.hud}>
@@ -540,8 +551,8 @@ const GLASS = 'rgba(13, 18, 26, 0.78)';
 const BORDER = 'rgba(140, 190, 210, 0.18)';
 
 const S: Record<string, React.CSSProperties> = {
-  root: { position: 'relative', width: '100%', height: '100%', minHeight: '100vh', background: '#05070A', overflow: 'hidden', fontFamily: 'Inter, system-ui, sans-serif', margin: '-24px', padding: 0 },
-  canvasHost: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, width: '100%', height: '100%' },
+  root: { position: 'relative', width: '100vw', height: 'calc(100vh - 60px)', background: '#05070A', overflow: 'hidden', fontFamily: 'Inter, system-ui, sans-serif' },
+  canvasHost: { position: 'absolute', top: 0, left: 0, width: '100%', height: '100%' },
   topBar: { position: 'absolute', top: 16, left: 20, display: 'flex', flexDirection: 'column', gap: 4, pointerEvents: 'none', zIndex: 10 },
   topBarTitle: { color: '#E8F1F5', fontSize: 14, fontWeight: 700, letterSpacing: '0.14em' },
   topBarSub: { color: '#7C93A3', fontSize: 10, letterSpacing: '0.08em', fontFamily: 'monospace' },
