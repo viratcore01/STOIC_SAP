@@ -7,6 +7,14 @@ __pycache__/
 .git/
 .freebuff/
 governance_ui/
-demo/frontend/
+demo/frontend/node_modules/
+demo/frontend/src/
+demo/frontend/public/
+demo/frontend/.gitignore
+demo/frontend/.oxlintrc.json
+demo/frontend/tsconfig*.json
+demo/frontend/vite.config.ts
+demo/frontend/package*.json
+demo/frontend/README.md
 dry_run.py
 pyproject.toml
