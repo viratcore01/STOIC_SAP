@@ -1,6 +1,7 @@
 # CCRO Platform — ColdChain Resilience Orchestrator
 
 > **DHL Life Sciences & Healthcare — Cold Chain Resilience Platform**
+> **SAP HackFest 2026 — Enterprise Architecture Specification**
 
 A hybrid deterministic-agentic system for pharmaceutical cold-chain disruption response. CCRO compresses disruption assessment/recovery-planning cycles from 4–12 hours of manual coordination to under 5 minutes, while satisfying FDA/EMA cold-chain compliance requirements.
 
@@ -15,8 +16,11 @@ A hybrid deterministic-agentic system for pharmaceutical cold-chain disruption r
 - React 19 SPA (Vite) + FastAPI backend deployed on Vercel
 - Real OR-Tools CP-SAT solver with deterministic audit hashes
 - LangGraph orchestrator pipeline with S1–S5 state machine
-- Immutable audit chain with tamper detection
+- 3D Geospatial Map Control Center with interactive route arcs
+- Immutable audit chain with SHA-256 tamper detection
 - Swagger API docs at `/docs`
+
+---
 
 ## Architecture Overview
 
@@ -24,11 +28,11 @@ CCRO is built as a five-layer functional decomposition:
 
 | Layer | Function | Implementation |
 |-------|----------|----------------|
-| **L1 — Ingestion** | Enterprise Data & Telemetry | Sensing Agent, BTP Event Mesh |
-| **L2 — Deterministic Rules** | Feasibility & Constraint Engine | OR-Tools/SciPy Solver (upstream of AI) |
-| **L3 — Intelligence & Policy** | Multi-Agent Reasoning & RAG | LangGraph/AutoGen agents + Policy Agent |
-| **L4 — Governance** | Human-in-the-Loop | Fiori/React Approval Card + WebSocket |
-| **L5 — ERP Execution** | SAP Writeback | SAP Integration Gateway (sole writer) |
+| **L1 — Ingestion** | Enterprise Data & Telemetry | Sensing Agent, BTP Event Mesh, SAP Mock Server |
+| **L2 — Deterministic Rules** | Feasibility & Constraint Engine | OR-Tools/SciPy Solver + Geodesic Router (upstream of AI) |
+| **L3 — Intelligence & Policy** | Multi-Agent Reasoning & RAG | LangGraph/AutoGen agents + Policy Agent + SOP Corpus |
+| **L4 — Governance** | Human-in-the-Loop | React Approval Card + Compliance Agent + WebSocket |
+| **L5 — ERP Execution** | SAP Writeback | SAP Integration Gateway (sole writer) + Mock TM Server |
 
 ### Four Sovereign Boundaries
 
@@ -37,12 +41,14 @@ CCRO is built as a five-layer functional decomposition:
 3. **Solver & Knowledge** — Stateless, deterministic compute + RAG. No SAP writes.
 4. **Human Governance** — Only boundary permitted to trigger SAP writes.
 
+---
+
 ## Resilience State Machine (S1–S5)
 
 ```
 S1 STABLE → S2 ABSORBING → S3 RECOVERY CONSTRAINED → S4 RECOVERY INSUFFICIENT → S5 SCARCITY ALLOCATION
-                 ↑              ↕                         ↕                            ↕
-              (resolved)    (capacity restored)       (alternate plan)           (back to S2/S3)
+     ↑              ↕                         ↕                            ↕
+  (resolved)    (capacity restored)       (alternate plan)           (back to S2/S3)
 ```
 
 | State | Trigger | Response |
@@ -53,53 +59,98 @@ S1 STABLE → S2 ABSORBING → S3 RECOVERY CONSTRAINED → S4 RECOVERY INSUFFICI
 | **S4** | Available capacity < total demand | Mandatory Scarcity Allocation Engine |
 | **S5** | Human-approved allocation active | SAP TM dispatch execution |
 
-### State Machine Integration (Round 2)
+### State Machine Integration
 
-The demo backend now uses `ResilienceStateMachine` to evaluate state transitions from live metrics instead of hardcoding states. Each transition is logged to the immutable audit chain with timestamps and trigger information.
+The demo backend uses `ResilienceStateMachine` to evaluate state transitions from live metrics instead of hardcoding states. Each transition is logged to the immutable audit chain with timestamps and trigger information.
 
-## Agents
+---
 
-### Disruption Sensing Agent (`agents/sensing_agent/`)
-- IoT telemetry ingestion via MQTT bridge
+## Multi-Agent System
+
+### 1. SENSE — Disruption Sensing Agent (`agents/sensing_agent/`)
+
+- IoT telemetry ingestion via MQTT bridge (`EventMeshConsumer`)
 - Weather/port disruption webhook processing
-- Carrier tracking signal normalization
+- Carrier tracking signal normalization (LBN)
 - Three input formats: MQTT JSON, weather webhooks, LBN carrier tracking
+- `TelemetryNormalizer` maps raw data to canonical `SenseEvent` schema
 
-### Impact & Scenario Agent (`agents/impact_agent/`)
+### 2. UNDERSTAND — Impact & Scenario Agent (`agents/impact_agent/`)
+
+- **Arrhenius Thermal Decay Engine** (`shelf_life_model/thermal_decay.py`):
+  - `k = A * exp(-Ea / (R * T))` kinetic formula
+  - Computes remaining shelf life from temperature log arrays
+  - Configurable activation energy (default 80 kJ/mol for biologics)
+  - Wired into Constraint C1 (thermal lifetime) of OR-Tools solver
 - Shelf-life projection from batch expiry data
-- Thermal decay modeling
 - Per-site demand impact assessment
 
-### Recovery Agent Cluster (`agents/recovery_agents/`)
-- AutoGen-style multi-agent negotiation (route, warehouse, fleet sub-agents)
-- Competing recovery proposals ranked by feasibility × impact
-- Speculative RAG pre-fetch during S3 (latency hiding)
+### 3. ADAPT — Recovery Agent Cluster (`agents/recovery_agents/`)
 
-### Scarcity Allocation Engine (`agents/scarcity_engine/`)
-- Priority scoring: P_i = w1 × SR_i + w2 × OS_i + w3 × VPI_i
+- **AutoGen-style multi-agent negotiation** (`negotiation_graph.py`):
+  - Route Realign Sub-Agent
+  - Warehouse Rebalancing Sub-Agent
+  - Fleet Expansion Sub-Agent
+  - Competing proposals ranked by feasibility × impact
+- **Geodesic Recovery Router** (`geodesic_router.py`):
+  - Haversine great-circle distance calculation
+  - Real European coordinates for 4 warehouse hubs + 8 clinic sites
+  - True transit times with cold-chain speed factor (0.85×)
+  - C1 feasibility check: `transit_time + buffer < remaining_shelf_life`
+  - Full (vehicle, site) pair evaluation with infeasible pair flagging
+  - Route distance matrix computation
+
+### 4. PROTECT — Scarcity Allocation Engine (`agents/scarcity_engine/`)
+
+- Priority scoring: `P_i = w1 × SR_i + w2 × OS_i + w3 × VPI_i`
 - OR-Tools CP-SAT solver with deterministic seed (reproducible audit)
 - Three hard constraints: thermal lifetime, vehicle capacity, reachability
 - SciPy LP relaxation pre-check (rapid feasibility filtering)
+- Input snapshot hashing for audit reproducibility
 
-### Policy Agent (`agents/policy_agent/`)
-- ChromaDB vector store for SOP clause retrieval (cosine similarity)
-- LLM structured output for policy weight extraction
-- Pydantic validation: w1 + w2 + w3 = 1.0, each in [0, 1]
-- Speculative prefetch during S3, cached with TTL validation
+### 5. GOVERN — Policy Agent (`agents/policy_agent/`)
 
-### Compliance Agent (`agents/compliance_agent/`) — NEW
-- **Sanctions compliance**: Blocks allocations to sanctioned regions (RU, IR, KP, SY, CU, BY) and entities
-- **Cold chain temperature**: Validates pharmaceutical shipments stay within 2–8°C range
-- **Allocation limits**: Prevents over-allocation (max 500 units/site)
-- **Dropped site risk**: Flags high-priority sites that couldn't be allocated
-- **Vehicle compatibility**: Checks cold-chain vehicle assignments
-- Runs as mandatory pre-writeback check before SAP TM execution
+- **ChromaDB vector store** for SOP clause retrieval (cosine similarity)
+- **LLM structured output** for policy weight extraction
+- **Pydantic validation**: `w1 + w2 + w3 = 1.0`, each in `[0, 1]`
+- **Speculative prefetch** during S3, cached with TTL validation
+- **Local SOP Corpus** (`data/sops/`):
+  - `WHO_Cold_Chain_Guidelines.md` — WHO cold chain management
+  - `DHL_Emergency_Allocation_SOP.md` — DHL emergency allocation
+  - `EU_GDP_Temp_Control.md` — EU GDP temperature control
+- **Ingestion Script** (`scripts/ingest_sops.py`):
+  - Markdown chunking with section/list-aware boundaries
+  - ChromaDB ingestion for policy_agent RAG retrieval
+  - Run: `python scripts/ingest_sops.py`
 
-### Execution Agent (`agents/execution_agent/`)
+### 6. Compliance Agent (`agents/compliance_agent/`) — Pre-Writeback Gate
+
+| Rule | Type | Effect |
+|------|------|--------|
+| **SANCTION-001/002** | Blocking | Blocks allocations to sanctioned regions (RU, IR, KP, SY, CU, BY) |
+| **COLD-001/002/003** | Blocking/Warning | Validates pharmaceutical cold chain (2–8°C range) |
+| **LIMIT-001/002** | Blocking/Warning | Prevents over-allocation (max 500 units/site) |
+| **RISK-001** | Warning | Flags high-priority sites that were dropped |
+| **VEHICLE-001** | Warning | Checks cold-chain vehicle assignments |
+
+Runs as mandatory pre-writeback check before SAP TM execution.
+
+### 7. EXECUTE — Execution Agent (`agents/execution_agent/`)
+
 - Two-phase SAP writeback (TM first, then S/4HANA)
 - Idempotency keys on all writes (SHA-256 deterministic)
 - Optimistic concurrency via If-Match ETags
 - Compliance agent gate: blocks writeback if violations found
+- Audit chain logging for every write operation
+
+### 8. ORCHESTRATOR — LangGraph State Orchestrator (`agents/orchestrator/`)
+
+- 6-node graph: sense → understand → adapt → protect → govern → execute
+- Conditional routing based on state machine evaluation
+- Redis-backed checkpointer for pause/resume across human-approval boundary
+- `CCROGraphState` shared state object (Pydantic) passed between all nodes
+
+---
 
 ## Solver Pipeline
 
@@ -113,9 +164,56 @@ Feasible Variables + Priority Scores → OR-Tools CP-SAT → AllocationPlan
 
 ### Three Hard Constraints (C1–C3)
 
-- **C1 (Thermal Lifetime):** TransitTime(v,i) + HandlingBuffer < RemainingShelfLife(i)
-- **C2 (Capacity):** Σ(PayloadMass × x_{i,v}) ≤ C_max(v)
+- **C1 (Thermal Lifetime):** `TransitTime(v,i) + HandlingBuffer < RemainingShelfLife(i)`
+- **C2 (Capacity):** `Σ(PayloadMass × x_{i,v}) ≤ C_max(v)`
 - **C3 (Reachability):** Sites unreachable within shelf life are dropped before solver runs
+
+These constraints are **absolute** — they cannot be relaxed, bypassed, or overridden by AI or human operators.
+
+---
+
+## SAP Mock Server (`sap_mock_server/`)
+
+Standalone FastAPI service emulating SAP TM OData v4:
+
+- **GET** `/sap/opu/odata4/sap/api_freightorder/FreightOrder` — list/query freight orders
+- **GET** `/sap/opu/odata4/sap/api_freightorder/FreightOrder('{id}')` — read single order
+- **PATCH** `/sap/opu/odata4/sap/api_freightorder/FreightOrder('{id}')` — update with ETag validation
+- **Idempotency ledger** — cache responses, return previous on duplicate `Idempotency-Key`
+- **ETag validation** — HTTP 412 Precondition Failed on `If-Match` mismatch
+- **8 seed freight orders** matching demo clinic/vehicle data
+
+Start: `uvicorn sap_mock_server.main:app --port 8080`
+
+---
+
+## 3D Geospatial Map Control Center
+
+### Backend: `GET /api/map/topology`
+
+Returns GeoJSON-style features:
+
+| Feature | Details |
+|---------|---------|
+| **Warehouse Hubs** | Frankfurt (50.11°N, 8.68°E), Nairobi (-1.29°S, 36.82°E) |
+| **8 Clinics** | Real coordinates, Pi scores, stock coverage %, allocation status |
+| **32 Route Arcs** | Arrhenius decay rates, ambient temps, transit times, feasibility flags |
+| **Disruption Markers** | Red Sea maritime breach + active disruption with pulsing beacons |
+| **Dropped Sites** | `is_dropped: true` with C1/C2 violation reasons |
+| **Audit Hash** | SHA-256 chain tip + validity status |
+
+### Frontend: `ResilienceGlobeView.tsx`
+
+- CSS 3D perspective map with SVG arc overlays
+- **Route arcs**: Green (nominal 2–8°C), Yellow (thermal warning), Red (C1 breach)
+- **Animated dots** moving along route arcs showing vehicle transit
+- **Pulsing disruption beacons** with severity labels
+- **Hover tooltips**: Vehicle ID, ambient temp, Arrhenius decay rate k, remaining hours
+- **Click clinic**: Pi score, stock coverage %, allocation status, drop reason
+- **Live Governance Overlay**: SHA-256 audit hash, chain validity, "Approve & Write Back to SAP" button
+- **Right panel**: Network stats, route status summary, capacity margin
+
+---
 
 ## Demo API Endpoints
 
@@ -124,6 +222,7 @@ Feasible Variables + Priority Scores → OR-Tools CP-SAT → AllocationPlan
 | `/` | GET | React SPA (or API landing page) |
 | `/health` | GET | Health check |
 | `/api/state` | GET | Full system state with orchestrator pipeline info |
+| `/api/map/topology` | GET | GeoJSON topology for 3D map control center |
 | `/api/disruptions` | GET | Available disruption scenarios |
 | `/api/disruption/trigger` | POST | Trigger disruption, run orchestrator pipeline |
 | `/api/allocation/run` | POST | Run solver with compliance check |
@@ -138,6 +237,8 @@ Feasible Variables + Priority Scores → OR-Tools CP-SAT → AllocationPlan
 | `/api/settings` | GET | System configuration |
 | `/api/reset` | POST | Reset demo to initial state |
 | `/docs` | GET | Swagger API documentation |
+
+---
 
 ## What-If Simulation
 
@@ -155,37 +256,56 @@ curl -X POST https://your-vercel-url/api/allocation/what-if \
 
 Returns comparative results with objective values, units dispatched, avoided loss, and the best scenario highlighted.
 
+---
+
 ## Project Structure
 
 ```
 ccro-platform/
-├── agents/                    # All LangGraph/AutoGen agent logic
-│   ├── sensing_agent/         # Phase 1 — SENSE (IoT + weather ingestion)
-│   ├── impact_agent/          # Phase 2 — UNDERSTAND (shelf-life projection)
-│   ├── recovery_agents/       # Phase 3 — ADAPT (route/warehouse/fleet)
-│   │   └── negotiation_graph.py  # AutoGen debate pattern
-│   ├── scarcity_engine/       # Phase 4 — PROTECT (priority scoring + solver)
-│   ├── policy_agent/          # Phase 5 — GOVERN (RAG retrieval + weight extraction)
-│   ├── compliance_agent/      # Pre-writeback compliance checking
-│   ├── execution_agent/       # Phase 6 — EXECUTE (post-approval SAP write)
-│   └── orchestrator/          # LangGraph State Orchestrator (S1–S5)
-├── solver/                    # Deterministic optimization (NO SAP access)
-│   ├── models/                # Constraint builder, objective builder
-│   └── engines/               # OR-Tools MILP, SciPy relaxation
-├── rag/                       # SOP corpus ingestion, vector store, weight validation
-├── api/                       # Vercel serverless function entrypoint
-├── sap_connectors/            # SOLE authorized SAP write path
-│   ├── odata_client/          # S/4HANA + SAP TM OData v4 clients
-│   ├── idempotency/           # Redis-backed replay protection
-│   └── destinations/          # BTP Destination Service config
-├── schemas/                   # Canonical data contracts (shared type system)
-├── demo/                      # Self-contained demo backend + React frontend
-│   ├── backend/main.py        # FastAPI app with mock data + real solver
-│   └── frontend/              # React 19 + Vite SPA
-├── governance_ui/             # React/Fiori frontend (Approval Card, Dashboard)
-├── infra/                     # Kyma manifests, Event Mesh config, CI/CD
-└── tests/                     # Unit, integration, solver determinism tests
+├── agents/                         # All LangGraph/AutoGen agent logic
+│   ├── sensing_agent/              # SENSE — IoT + weather ingestion
+│   │   ├── ingestion/              #   Event Mesh consumer, MQTT parsing
+│   │   └── normalizers/            #   Telemetry normalizer (3 formats)
+│   ├── impact_agent/               # UNDERSTAND — shelf-life projection
+│   │   └── shelf_life_model/       #   Arrhenius thermal decay engine
+│   ├── recovery_agents/            # ADAPT — route/warehouse/fleet
+│   │   ├── negotiation_graph.py    #   AutoGen debate pattern
+│   │   ├── geodesic_router.py      #   Haversine distance + C1 feasibility
+│   │   ├── route_subagent/         #   Route re-alignment
+│   │   ├── warehouse_subagent/     #   Warehouse rebalancing
+│   │   └── fleet_subagent/         #   Fleet expansion
+│   ├── scarcity_engine/            # PROTECT — priority scoring + solver
+│   ├── policy_agent/               # GOVERN — RAG retrieval + weight extraction
+│   ├── compliance_agent/           # Pre-writeback compliance (5 rules)
+│   ├── execution_agent/            # EXECUTE — post-approval SAP write
+│   └── orchestrator/               # LangGraph State Orchestrator (S1–S5)
+├── solver/                         # Deterministic optimization (NO SAP access)
+│   ├── models/                     #   Constraint builder, objective builder
+│   └── engines/                    #   OR-Tools MILP, SciPy relaxation
+├── rag/                            # SOP corpus, vector store, weight validation
+│   ├── vectorstore/                #   ChromaDB client
+│   └── schemas/                    #   PolicyWeightsExtraction Pydantic
+├── scripts/                        # Data ingestion utilities
+│   └── ingest_sops.py              #   SOP markdown → ChromaDB ingestion
+├── data/sops/                      # Local SOP corpus (3 documents)
+├── sap_mock_server/                # SAP TM OData v4 emulator (port 8080)
+├── api/                            # Vercel serverless function entrypoint
+├── sap_connectors/                 # SOLE authorized SAP write path
+│   ├── odata_client/               #   S/4HANA + SAP TM OData v4 clients
+│   ├── idempotency/                #   Redis-backed replay protection
+│   └── destinations/               #   BTP Destination Service config
+├── schemas/                        # Canonical data contracts (shared type system)
+├── demo/                           # Self-contained demo backend + React frontend
+│   ├── backend/main.py             #   FastAPI app (23 endpoints + map topology)
+│   └── frontend/                   #   React 19 + Vite SPA (6 pages)
+│       └── src/pages/              #     Dashboard, Control Center, Approvals,
+│                                   #     Allocations, Audit Log, Settings
+├── governance_ui/                  # React/Fiori frontend (Approval Card)
+├── infra/                          # Kyma manifests, Event Mesh config, CI/CD
+└── tests/                          # 45 unit + integration tests
 ```
+
+---
 
 ## Key Design Decisions
 
@@ -204,6 +324,14 @@ Every SAP writeback passes through the Compliance Agent, which checks sanctions,
 ### Module Boundary Enforcement
 CI/CD enforces: `/solver` and `/rag` are **prohibited** from importing anything from `/sap_connectors` — structurally guaranteeing that deterministic and retrieval layers remain side-effect-free with respect to SAP.
 
+### Geodesic Routing
+The Recovery Agent uses Haversine great-circle distances with real European coordinates instead of placeholder heuristics. Routes are pre-filtered by C1 (thermal lifetime) before the solver runs, reducing problem dimensionality.
+
+### Local SOP Corpus
+Policy Agent queries 3 local SOP documents (WHO, DHL, EU GDP) via ChromaDB vector store instead of relying on external APIs. Ingestion is deterministic and idempotent via `scripts/ingest_sops.py`.
+
+---
+
 ## Quick Start
 
 ```bash
@@ -211,16 +339,22 @@ CI/CD enforces: `/solver` and `/rag` are **prohibited** from importing anything 
 pip install -e ".[dev]"
 pip install chromadb  # Required for RAG vector store
 
-# Run tests
+# Run tests (45/45)
 pytest tests/ -v
 
 # Run full pipeline dry-run
 python dry_run.py
 
-# Start demo backend
-uvicorn demo.backend.main:app --reload --port 8000
+# Ingest SOP corpus into ChromaDB
+python scripts/ingest_sops.py
 
-# Or deploy to Vercel
+# Start demo backend (serves API + React SPA)
+uvicorn api.index:app --host 0.0.0.0 --port 8001
+
+# Start SAP Mock Server (separate terminal)
+uvicorn sap_mock_server.main:app --port 8080
+
+# Deploy to Vercel
 vercel deploy
 ```
 
@@ -232,6 +366,9 @@ The demo is deployed as a Python serverless function on Vercel:
 - **Dependencies**: `requirements.txt` (fastapi, pydantic, structlog, ortools, numpy)
 - **Build**: `@vercel/python` runtime with `pip install -r requirements.txt`
 - **Frontend**: Pre-built React SPA served from `demo/frontend/dist/`
+- **pyproject.toml**: Excluded from deployment (avoids broken `odata` dep)
+
+---
 
 ## SAP Integration
 
@@ -243,6 +380,20 @@ The demo is deployed as a Python serverless function on Vercel:
 | **SAP BTP** | Host platform | Kyma runtime, Event Mesh, Destinations |
 
 All SAP writes flow through a single **SAP Integration Gateway** microservice enforcing idempotency, schema validation, and audit logging.
+
+For development, the **SAP Mock Server** (`sap_mock_server/main.py`) provides a standalone OData v4 emulator with ETag validation and idempotency key ledger.
+
+---
+
+## Test Suite — 45/45 Tests
+
+| Test File | Tests | Coverage |
+|-----------|-------|----------|
+| `tests/unit/test_schemas.py` | 15 | Pydantic schemas, PolicyWeights, CCROGraphState, AuditChain |
+| `tests/unit/test_new_components.py` | 27 | SAP mock server, thermal decay, SOP ingestion, geodesic routing |
+| `tests/solver_determinism/` | 3 | Solver reproducibility, different weights, dropped sites |
+
+---
 
 ## License
 
