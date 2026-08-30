@@ -540,8 +540,8 @@ const GLASS = 'rgba(13, 18, 26, 0.78)';
 const BORDER = 'rgba(140, 190, 210, 0.18)';
 
 const S: Record<string, React.CSSProperties> = {
-  root: { position: 'relative', width: '100%', height: '100%', minHeight: '100vh', background: '#05070A', overflow: 'hidden', fontFamily: 'Inter, system-ui, sans-serif' },
-  canvasHost: { position: 'absolute', inset: 0 },
+  root: { position: 'relative', width: '100%', height: '100%', minHeight: '100vh', background: '#05070A', overflow: 'hidden', fontFamily: 'Inter, system-ui, sans-serif', margin: '-24px', padding: 0 },
+  canvasHost: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, width: '100%', height: '100%' },
   topBar: { position: 'absolute', top: 16, left: 20, display: 'flex', flexDirection: 'column', gap: 4, pointerEvents: 'none', zIndex: 10 },
   topBarTitle: { color: '#E8F1F5', fontSize: 14, fontWeight: 700, letterSpacing: '0.14em' },
   topBarSub: { color: '#7C93A3', fontSize: 10, letterSpacing: '0.08em', fontFamily: 'monospace' },
