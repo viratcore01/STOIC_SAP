@@ -198,6 +198,8 @@ Returns GeoJSON-style features:
 | **Warehouse Hubs** | Frankfurt (50.11°N, 8.68°E), Nairobi (-1.29°S, 36.82°E) |
 | **8 Clinics** | Real coordinates, Pi scores, stock coverage %, allocation status |
 | **32 Route Arcs** | Arrhenius decay rates, ambient temps, transit times, feasibility flags |
+| **3 Maritime Routes** | Eurostat searoute paths: Rotterdam-Mombasa, Frankfurt-Nairobi, Rotterdam-Shanghai |
+| **909 Harbours** | VISIR-2 port database for nearest-port lookup and multi-modal routing |
 | **Disruption Markers** | Red Sea maritime breach + active disruption with pulsing beacons |
 | **Dropped Sites** | `is_dropped: true` with C1/C2 violation reasons |
 | **Audit Hash** | SHA-256 chain tip + validity status |
@@ -222,7 +224,8 @@ Returns GeoJSON-style features:
 | `/` | GET | React SPA (or API landing page) |
 | `/health` | GET | Health check |
 | `/api/state` | GET | Full system state with orchestrator pipeline info |
-| `/api/map/topology` | GET | GeoJSON topology for 3D map control center |
+| `/api/map/topology` | GET | GeoJSON topology for 3D map (includes maritime data, 909 harbours) |
+| `/api/routes/maritime` | GET | Maritime route computation with searoute (passage avoidance, K-alternatives) |
 | `/api/disruptions` | GET | Available disruption scenarios |
 | `/api/disruption/trigger` | POST | Trigger disruption, run orchestrator pipeline |
 | `/api/allocation/run` | POST | Run solver with compliance check |
@@ -271,6 +274,7 @@ ccro-platform/
 │   ├── recovery_agents/            # ADAPT — route/warehouse/fleet
 │   │   ├── negotiation_graph.py    #   AutoGen debate pattern
 │   │   ├── geodesic_router.py      #   Haversine distance + C1 feasibility
+│   │   ├── maritime_router.py      #   Eurostat searoute + VISIR-2 integration
 │   │   ├── route_subagent/         #   Route re-alignment
 │   │   ├── warehouse_subagent/     #   Warehouse rebalancing
 │   │   └── fleet_subagent/         #   Fleet expansion
@@ -287,7 +291,13 @@ ccro-platform/
 │   └── schemas/                    #   PolicyWeightsExtraction Pydantic
 ├── scripts/                        # Data ingestion utilities
 │   └── ingest_sops.py              #   SOP markdown → ChromaDB ingestion
-├── data/sops/                      # Local SOP corpus (3 documents)
+├── data/
+│   ├── sops/                       # Local SOP corpus (3 documents)
+│   └── vi/                         # VISIR-2 GMD 2023 dataset
+│       ├── __data/harbours/        #   909-world port database (harbours_DB.csv)
+│       ├── _d_Tracce/              #   Yen's K-Shortest Paths, Dijkstra algorithms
+│       ├── _c_Pesi/                #   Edge weight computation, velocity models
+│       └── Navi/                   #   Vessel performance models (B-spline, NN)
 ├── sap_mock_server/                # SAP TM OData v4 emulator (port 8080)
 ├── api/                            # Vercel serverless function entrypoint
 ├── sap_connectors/                 # SOLE authorized SAP write path
@@ -327,6 +337,50 @@ CI/CD enforces: `/solver` and `/rag` are **prohibited** from importing anything 
 ### Geodesic Routing
 The Recovery Agent uses Haversine great-circle distances with real European coordinates instead of placeholder heuristics. Routes are pre-filtered by C1 (thermal lifetime) before the solver runs, reducing problem dimensionality.
 
+### Maritime Route Engine (Eurostat SeaRoute + VISIR-2 Integration)
+The system integrates **Eurostat SeaRoute** (Dijkstra on global maritime lane network) and **VISIR-2 GMD 2023** concepts for realistic sea routing:
+
+| Component | Source | Description |
+|-----------|--------|-------------|
+| **MaritimeRouter** | Eurostat searoute | Dijkstra on 5km-resolution shipping lanes (not great-circle) |
+| **HarboursDatabase** | VISIR-2 | 909 real-world ports from `harbours_DB.csv` (UN/LOCODE, lat/lon) |
+| **K-Shortest Paths** | VISIR-2 Yen's algorithm | Alternative routes by restricting different passages |
+| **Weather Impact** | VISIR-2 env fields | Speed/fuel multipliers for calm/moderate/rough/severe conditions |
+| **Passage Avoidance** | Eurostat | 12 straits: Suez, Panama, Malacca, Gibraltar, Dover, Bering, etc. |
+| **Fuel & Cost Est.** | VISIR-2 velocity models | Tons of fuel + USD cost per route |
+
+**Key routes computed:**
+| Route | Distance | Duration | Fuel | Cost |
+|-------|----------|----------|------|------|
+| Rotterdam → Mombasa | 11,873 km | 267h (11 days) | 1,670 tons | $946k |
+| Frankfurt → Nairobi | 12,256 km | 276h (11.5 days) | 1,723 tons | $977k |
+| Rotterdam → Shanghai | 15,507 km | 349h (14.5 days) | 2,181 tons | $1.24M |
+
+**Disruption impact analysis:** Suez closure adds ~4,100 km and ~3.8 days to Europe-Asia routes.
+
+```python
+from agents.recovery_agents.maritime_router import MaritimeRouter
+router = MaritimeRouter()
+route = router.compute_route(
+    origin=(4.4792, 51.9225),      # Rotterdam (lon, lat)
+    destination=(39.6612, -4.0383), # Mombasa
+    restrictions=['suez'],          # Avoid Suez Canal
+)
+print(f"{route.distance_km} km, {route.duration_hours}h, ${route.cost_estimate_usd}")
+```
+
+**K-shortest path alternatives** for resilience planning:
+```python
+alternatives = router.compute_k_alternatives(
+    origin=(4.4792, 51.9225),
+    destination=(121.4737, 31.2304),
+    k=3,
+)
+# Returns primary route + 2 alternatives via different passage restrictions
+```
+
+The `GeodesicRouter` automatically detects seaports near origin/destination and uses maritime routing when available, falling back to Haversine for land-only routes.
+
 ### Local SOP Corpus
 Policy Agent queries 3 local SOP documents (WHO, DHL, EU GDP) via ChromaDB vector store instead of relying on external APIs. Ingestion is deterministic and idempotent via `scripts/ingest_sops.py`.
 
@@ -338,6 +392,7 @@ Policy Agent queries 3 local SOP documents (WHO, DHL, EU GDP) via ChromaDB vecto
 # Install dependencies
 pip install -e ".[dev]"
 pip install chromadb  # Required for RAG vector store
+pip install searoute  # Maritime route computation (Eurostat SeaRoute)
 
 # Run tests (45/45)
 pytest tests/ -v

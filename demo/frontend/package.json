@@ -10,10 +10,13 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@types/leaflet": "^1.9.22",
     "cesium": "^1.144.0",
+    "leaflet": "^1.9.4",
     "lucide-react": "^1.35.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
+    "react-leaflet": "^5.0.0",
     "resium": "^1.25.0",
     "vite-plugin-cesium": "^1.2.23"
   },
