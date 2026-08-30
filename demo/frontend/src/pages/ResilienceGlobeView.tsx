@@ -89,7 +89,7 @@ export default function ResilienceGlobeView({ addToast }: { addToast: (msg: stri
         animation: false,
         sceneModePicker: false,
         baseLayerPicker: false,
-        globe: false,
+        // globe defaults to true (show OSM ellipsoid); Google 3D Tiles replace it
         geocoder: false,
         homeButton: false,
         navigationHelpButton: false,
@@ -121,17 +121,19 @@ export default function ResilienceGlobeView({ addToast }: { addToast: (msg: stri
             tileset.destroy?.();
           }
         } catch {
-          // fallback
+          // fallback to OSM
         }
       }
-      if (source === 'osm' && !destroyed) {
-        viewer.scene.globe.show = true;
+      // Always ensure OSM layer is available as fallback
+      if (!destroyed) {
         try {
-          const osm = new Cesium.OpenStreetMapImageryProvider({ url: 'https://tile.openstreetmap.org/' });
-          viewer.imageryLayers.addImageryProvider(osm);
+          viewer.imageryLayers.removeAll();
+          viewer.imageryLayers.addImageryProvider(
+            new Cesium.OpenStreetMapImageryProvider({ url: 'https://tile.openstreetmap.org/' })
+          );
         } catch { /* ok */ }
+        setMapSource(source);
       }
-      if (!destroyed) setMapSource(source);
 
       // Camera
       viewer.camera.flyTo({
