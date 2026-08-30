@@ -113,10 +113,6 @@ export default function Approvals({ state, onRefresh, addToast }: Props) {
 
   const doNothing = allocation.do_nothing;
   const ccroAlloc = allocation.ccro_allocation;
-  const totalFulfillment = allocation.assignments.reduce(
-    (sum: number, a: AllocationAssignment) => sum + a.priority_score * a.allocated_units,
-    0
-  );
 
   return (
     <div>

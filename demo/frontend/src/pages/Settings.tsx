@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
 import {
-  Settings as SettingsIcon,
   Server,
   Activity,
   Database,

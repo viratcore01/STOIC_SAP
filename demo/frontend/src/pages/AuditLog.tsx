@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { ScrollText, Shield, CheckCircle, AlertTriangle, Link, User, Cpu, Bot } from 'lucide-react';
+import { ScrollText, Shield, User, Cpu, Bot } from 'lucide-react';
 import { api } from '../api';
 import type { AuditEntry, AuditLogResponse } from '../types';
 

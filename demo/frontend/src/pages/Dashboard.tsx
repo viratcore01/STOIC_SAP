@@ -2,8 +2,6 @@ import { useState } from 'react';
 import {
   Activity,
   AlertTriangle,
-  Thermometer,
-  Truck,
   Building2,
   Clock,
   Zap,

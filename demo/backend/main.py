@@ -1166,6 +1166,201 @@ async def get_settings():
     }
 
 
+@app.get("/api/map/topology")
+async def get_map_topology():
+    """GeoJSON-style topology for the 3D map control center.
+
+    Returns:
+    - Warehouse hubs (Frankfurt, Nairobi)
+    - 7+ Clinic destinations with priority scores
+    - Vehicle route arcs with Arrhenius thermal decay data
+    - Disruption markers with severity
+    - Dropped sites with violation reasons
+    """
+    state.compute_totals()
+
+    # --- Warehouse Hubs ---
+    hubs = [
+        {
+            "id": "HUB-FRA",
+            "name": "Frankfurt Cold Chain Hub",
+            "type": "warehouse",
+            "coordinates": [50.1109, 8.6821],
+            "capacity_kg": state.total_available_capacity,
+            "status": "active",
+        },
+        {
+            "id": "HUB-NBO",
+            "name": "Nairobi Distribution Center",
+            "type": "warehouse",
+            "coordinates": [-1.2921, 36.8219],
+            "capacity_kg": 500.0,
+            "status": "active",
+        },
+    ]
+
+    # --- Clinic Destinations ---
+    clinic_coords = {
+        "CLN-001": [48.1508, 11.5802],
+        "CLN-002": [52.5236, 13.3417],
+        "CLN-003": [50.9333, 6.9500],
+        "CLN-004": [52.3750, 9.8100],
+        "CLN-005": [47.3769, 8.5417],
+        "CLN-006": [51.9115, 4.4736],
+        "CLN-007": [59.3489, 18.0238],
+        "CLN-008": [48.8384, 2.3640],
+    }
+
+    clinics = []
+    for clinic_id, clinic in CLINICS.items():
+        remaining = state.shelf_life_projections.get(clinic_id, 0)
+        original = state.original_shelf_life.get(clinic_id, remaining)
+        stock_coverage = round((remaining / original * 100) if original > 0 else 0, 1)
+
+        clinics.append({
+            "id": clinic_id,
+            "name": clinic["name"],
+            "type": "clinic",
+            "coordinates": clinic_coords.get(clinic_id, [0, 0]),
+            "city": clinic["city"],
+            "country": clinic.get("country", ""),
+            "demand_units": clinic["demand_units"],
+            "criticality": clinic["criticality"],
+            "vpi": clinic["vulnerable_population_index"],
+            "remaining_shelf_life_hours": remaining,
+            "original_shelf_life_hours": original,
+            "stock_coverage_pct": stock_coverage,
+            "is_threatened": remaining < 24,
+            "is_dropped": False,
+            "priority_score": 0.0,
+        })
+
+    # --- Run solver to get priority scores and dropped sites ---
+    pw_dict = state.policy_weights
+    allocation_plan = _run_solver(state.shelf_life_projections, pw_dict)
+
+    # Update priority scores on clinics
+    for assignment in allocation_plan.assignments:
+        for c in clinics:
+            if c["id"] == assignment.site_id:
+                c["priority_score"] = round(assignment.priority_score, 4)
+                c["allocated_vehicle"] = assignment.vehicle_id
+                c["allocated_units"] = assignment.allocated_units
+                c["allocation_status"] = "allocated"
+
+    # Mark dropped sites
+    dropped_ids = {d.site_id for d in allocation_plan.dropped_sites}
+    for c in clinics:
+        if c["id"] in dropped_ids:
+            dropped = next(d for d in allocation_plan.dropped_sites if d.site_id == c["id"])
+            c["is_dropped"] = True
+            c["drop_reason"] = dropped.reason
+            c["allocation_status"] = "dropped"
+
+    # Unallocated clinics
+    allocated_ids = {a.site_id for a in allocation_plan.assignments}
+    for c in clinics:
+        if c["id"] not in allocated_ids and c["id"] not in dropped_ids:
+            c["allocation_status"] = "unallocated"
+
+    # --- Route Arcs with Arrhenius thermal data ---
+    routes = []
+    route_counter = 0
+    for vehicle_id, vehicle in VEHICLES.items():
+        for site_id, transit_time in vehicle["transit_times"].items():
+            remaining = state.shelf_life_projections.get(site_id, 0)
+            hub_coords = clinic_coords.get("CLN-001", [50.1109, 8.6821])  # default Frankfurt
+
+            # Determine route status based on thermal feasibility
+            buffer_hours = 2.0
+            is_feasible = (transit_time + buffer_hours) < remaining
+            decay_rate = round(0.02 + (transit_time * 0.005), 4)  # simplified Arrhenius proxy
+            ambient_temp = round(4.0 + (transit_time * 0.15), 1)  # increases with distance
+
+            if not is_feasible:
+                route_status = "thermal_breach"
+                route_color = "red"
+            elif ambient_temp > 7.0:
+                route_status = "thermal_warning"
+                route_color = "yellow"
+            else:
+                route_status = "nominal"
+                route_color = "green"
+
+            routes.append({
+                "id": f"ROUTE-{vehicle_id}-{site_id}",
+                "vehicle_id": vehicle_id,
+                "vehicle_type": vehicle["type"],
+                "origin": hub_coords,
+                "destination": clinic_coords.get(site_id, [0, 0]),
+                "transit_time_hours": transit_time,
+                "distance_km": round(transit_time * 55 * 0.85, 0),  # speed * cold chain factor
+                "remaining_shelf_life_hours": remaining,
+                "arrhenius_decay_rate": decay_rate,
+                "ambient_temperature_celsius": ambient_temp,
+                "is_feasible": is_feasible,
+                "route_status": route_status,
+                "route_color": route_color,
+                "feasibility_reason": "" if is_feasible else f"C1: transit ({transit_time}h) + buffer ({buffer_hours}h) >= shelf life ({remaining}h)",
+            })
+            route_counter += 1
+
+    # --- Disruption Markers ---
+    disruptions = []
+    if state.current_disruption:
+        # Map disruption to geographic coordinates
+        disruption_coords = {
+            "D-001": [48.2000, 11.7000],  # Munich area
+            "D-002": [51.9225, 4.4792],   # Rotterdam port
+            "D-003": [50.5000, 10.0000],  # Central Germany
+        }
+        did = state.current_disruption["id"]
+        disruptions.append({
+            "id": did,
+            "name": state.current_disruption["name"],
+            "type": state.current_disruption["type"],
+            "severity": state.current_disruption["severity"],
+            "coordinates": disruption_coords.get(did, [50.0, 10.0]),
+            "affected_sites": state.current_disruption["affected_sites"],
+            "description": state.current_disruption["description"],
+        })
+
+    # Static disruption markers for demo
+    disruptions.append({
+        "id": "DISP-RED-SEA",
+        "name": "Red Sea Maritime Disruption",
+        "type": "maritime",
+        "severity": "high",
+        "coordinates": [12.5, 43.5],
+        "affected_sites": [],
+        "description": "Houthi attacks on commercial shipping. Cape of Good Hope reroute active.",
+        "is_static": True,
+    })
+
+    # --- Audit Hash ---
+    chain_records = state.audit_chain.get_records()
+    audit_hash = state.audit_chain.chain_tip[:16] + "..."
+    chain_valid = state.audit_chain.verify_integrity()
+
+    return {
+        "hubs": hubs,
+        "clinics": clinics,
+        "routes": routes,
+        "disruptions": disruptions,
+        "audit": {
+            "chain_hash": audit_hash,
+            "chain_valid": chain_valid,
+            "chain_length": len(chain_records),
+        },
+        "state_machine": {
+            "current_state": state.resilience_state,
+            "capacity_margin_pct": state.get_capacity_margin_for_gauge(),
+            "total_demand": state.total_demand,
+            "total_capacity": state.total_available_capacity,
+        },
+    }
+
+
 @app.get("/health")
 async def health():
     return {"status": "healthy", "version": "1.0.0"}

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import {
   LayoutDashboard,
+  Globe,
   ShieldCheck,
   History,
   ScrollText,
@@ -18,9 +19,10 @@ import Approvals from './pages/Approvals';
 import Allocations from './pages/Allocations';
 import AuditLog from './pages/AuditLog';
 import SettingsPage from './pages/Settings';
+import ResilienceGlobeView from './pages/ResilienceGlobeView';
 import './App.css';
 
-type Page = 'dashboard' | 'approvals' | 'allocations' | 'audit' | 'settings';
+type Page = 'dashboard' | 'map' | 'approvals' | 'allocations' | 'audit' | 'settings';
 
 interface Toast {
   id: number;
@@ -70,6 +72,7 @@ function App() {
 
   const navItems: { id: Page; label: string; Icon: typeof LayoutDashboard; badge?: number }[] = [
     { id: 'dashboard', label: 'Dashboard', Icon: LayoutDashboard },
+    { id: 'map', label: 'Control Center', Icon: Globe },
     { id: 'approvals', label: 'Approvals', Icon: ShieldCheck, badge: hasPending ? 1 : undefined },
     { id: 'allocations', label: 'Allocations', Icon: History },
     { id: 'audit', label: 'Audit Log', Icon: ScrollText },
@@ -148,6 +151,9 @@ function App() {
       <main className="main-content">
         {page === 'dashboard' && (
           <Dashboard state={systemState} onRefresh={refreshState} addToast={addToast} />
+        )}
+        {page === 'map' && (
+          <ResilienceGlobeView addToast={addToast} />
         )}
         {page === 'approvals' && (
           <Approvals state={systemState} onRefresh={refreshState} addToast={addToast} />

@@ -50,6 +50,9 @@ export const api = {
   // Settings
   getSettings: () => request<any>('/settings'),
 
+  // Map topology
+  getMapTopology: () => request<any>('/map/topology'),
+
   // Reset
   reset: () => request<any>('/reset', { method: 'POST' }),
 };

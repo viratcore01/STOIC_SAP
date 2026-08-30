@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { History, CheckCircle, XCircle, Clock } from 'lucide-react';
+import { History } from 'lucide-react';
 import { api } from '../api';
 import type { AllocationHistoryEntry } from '../types';
 
