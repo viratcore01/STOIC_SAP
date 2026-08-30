@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { Viewer, Entity, BillboardGraphics, PolylineGraphics, EllipseGraphics, LabelGraphics } from 'resium';
+import { Viewer, Entity, BillboardGraphics, PolylineGraphics, EllipseGraphics, LabelGraphics, CylinderGraphics } from 'resium';
 import * as Cesium from 'cesium';
 import { api } from '../api';
 import {
@@ -74,15 +74,17 @@ interface Topology {
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
-const STATUS_COLORS: Record<string, Cesium.Color> = {
+const ROUTE_COLORS: Record<string, Cesium.Color> = {
   nominal: Cesium.Color.fromCssColorString('#3D8B7A'),
   thermal_warning: Cesium.Color.fromCssColorString('#D4A017'),
   thermal_breach: Cesium.Color.fromCssColorString('#C23B3B'),
+  approved: Cesium.Color.fromCssColorString('#4FC3F7'),
 };
 const STATUS_CSS: Record<string, string> = {
   nominal: '#3D8B7A',
   thermal_warning: '#D4A017',
   thermal_breach: '#C23B3B',
+  approved: '#4FC3F7',
 };
 const CRITICALITY_COLORS: Record<string, string> = {
   critical: '#C23B3B',
@@ -137,7 +139,39 @@ function buildArcPositions(
   return positions;
 }
 
-// Suppress Cesium Ion token warning — using OpenStreetMap tiles (free, no key)
+/**
+ * Attempt to load Google Photorealistic 3D Tiles.
+ * Falls back to OpenStreetMap if no key or load failure.
+ */
+async function loadGlobeBaseLayer(viewer: Cesium.Viewer): Promise<'google' | 'osm'> {
+  // Try Google Photorealistic 3D Tiles if key is available
+  const apiKey = (import.meta as any).env?.VITE_GOOGLE_MAPS_API_KEY as string | undefined;
+  if (apiKey) {
+    try {
+      const tileset = await (Cesium as any).createGooglePhotorealistic3DTileset({
+        key: apiKey,
+        maximumScreenSpaceError: 16,
+      });
+      viewer.scene.primitives.add(tileset);
+      // Enable atmosphere and lighting for photorealistic look
+      if (viewer.scene.skyAtmosphere) viewer.scene.skyAtmosphere.show = true;
+      viewer.scene.globe.enableLighting = true;
+      if (viewer.scene.fog) { viewer.scene.fog.enabled = true; viewer.scene.fog.density = 0.0002; }
+      if (viewer.scene.shadowMap) viewer.scene.shadowMap.enabled = true;
+      return 'google';
+    } catch (e) {
+      console.warn('Google 3D Tiles failed, falling back to OSM:', e);
+    }
+  }
+  // Fallback: OpenStreetMap tiles (free, no key)
+  viewer.imageryLayers.removeAll();
+  viewer.imageryLayers.addImageryProvider(
+    new Cesium.OpenStreetMapImageryProvider({ url: 'https://tile.openstreetmap.org/' }),
+  );
+  return 'osm';
+}
+
+// Suppress Cesium Ion token warning when using OSM/Google tiles
 Cesium.Ion.defaultAccessToken = undefined as unknown as string;
 
 // ─── Component ────────────────────────────────────────────────────────────────
@@ -150,9 +184,10 @@ export default function ResilienceGlobeView({
   const [topology, setTopology] = useState<Topology | null>(null);
   const [loading, setLoading] = useState(true);
   const [selectedClinic, setSelectedClinic] = useState<Clinic | null>(null);
-  const [hoveredRoute] = useState<Route | null>(null);
-  const [hoverPos] = useState({ x: 0, y: 0 });
+  const [hoveredRoute, setHoveredRoute] = useState<Route | null>(null);
+  const [, setHoverPos] = useState({ x: 0, y: 0 });
   const [whatIfRunning, setWhatIfRunning] = useState(false);
+  const [mapSource, setMapSource] = useState<string>('loading');
   const viewerRef = useRef<Cesium.Viewer | null>(null);
   const focusedEntityId = useRef<string | null>(null);
 
@@ -173,6 +208,17 @@ export default function ResilienceGlobeView({
     return () => clearInterval(iv);
   }, [fetchTopology]);
 
+  // Load Google 3D Tiles or OSM fallback after viewer mounts
+  useEffect(() => {
+    const load = async () => {
+      if (!viewerRef.current) return;
+      const source = await loadGlobeBaseLayer(viewerRef.current);
+      setMapSource(source);
+    };
+    const timer = setTimeout(load, 500); // small delay to let viewer init
+    return () => clearTimeout(timer);
+  }, [loading]);
+
   // Fly-to animation when selecting a clinic
   useEffect(() => {
     if (!selectedClinic || !viewerRef.current) return;
@@ -190,7 +236,17 @@ export default function ResilienceGlobeView({
     focusedEntityId.current = selectedClinic.id;
   }, [selectedClinic]);
 
+  // Fly-to disruption and trigger what-if
   const handleDisruptionClick = async (disruption: Disruption) => {
+    // Fly camera to disruption coordinates
+    if (viewerRef.current) {
+      const [lat, lng] = disruption.coordinates;
+      viewerRef.current.camera.flyTo({
+        destination: Cesium.Cartesian3.fromDegrees(lng, lat, 3_000_000),
+        orientation: { heading: 0, pitch: Cesium.Math.toRadians(-40), roll: 0 },
+        duration: 1.2,
+      });
+    }
     setWhatIfRunning(true);
     try {
       const res = await fetch('/api/allocation/what-if', {
@@ -204,10 +260,11 @@ export default function ResilienceGlobeView({
       });
       const data = await res.json();
       addToast(
-        `What-if complete — best scenario: ${data.best_scenario?.label || 'N/A'}`,
+        `What-if complete — best: ${data.best_scenario?.label || 'N/A'}`,
         'success',
       );
-      if (disruption.affected_sites.length > 0 && viewerRef.current) {
+      // After what-if, fly to first affected clinic
+      if (disruption.affected_sites.length > 0) {
         const clinicId = disruption.affected_sites[0];
         const clinic = topology?.clinics.find((c) => c.id === clinicId);
         if (clinic) setSelectedClinic(clinic);
@@ -239,11 +296,14 @@ export default function ResilienceGlobeView({
 
   const cesiumRoutes = useMemo(
     () =>
-      routes.slice(0, 30).map((route) => ({
-        ...route,
-        arcPositions: buildArcPositions(route.origin, route.destination),
-        cesiumColor: STATUS_COLORS[route.route_status] || STATUS_COLORS.nominal,
-      })),
+      routes.slice(0, 30).map((route) => {
+        const status = route.route_status as keyof typeof ROUTE_COLORS;
+        return {
+          ...route,
+          arcPositions: buildArcPositions(route.origin, route.destination),
+          cesiumColor: ROUTE_COLORS[status] || ROUTE_COLORS.nominal,
+        };
+      }),
     [routes],
   );
 
@@ -322,6 +382,9 @@ export default function ResilienceGlobeView({
           {whatIfRunning && (
             <span style={{ fontSize: 11, color: '#D4A017' }}>Running what-if…</span>
           )}
+          <span style={{ fontSize: 10, color: 'var(--text-secondary)', opacity: 0.6 }}>
+            {mapSource === 'google' ? '🛰 Google 3D' : mapSource === 'osm' ? '🗺 OSM' : '⏳ Loading…'}
+          </span>
           <button className="btn btn-ghost btn-sm" onClick={fetchTopology}>
             <Activity size={14} /> Refresh
           </button>
@@ -347,35 +410,47 @@ export default function ResilienceGlobeView({
             style={{ background: '#080c18' }}
             scene3DOnly
             baseLayer={new Cesium.ImageryLayer(
-              new Cesium.OpenStreetMapImageryProvider({
-                url: 'https://tile.openstreetmap.org/',
-              }),
+              new Cesium.OpenStreetMapImageryProvider({ url: 'https://tile.openstreetmap.org/' }),
             )}
           >
-            {/* ─── HUB BEACONS (glowing pillars) ──────────────────────────── */}
+            {/* ─── HUB BEACONS (glowing 3D cylinders) ─────────────────────── */}
             {cesiumHubs.map((hub) => (
               <Entity key={hub.id} position={hub.cartesian} name={hub.name}>
+                {/* 3D cylinder pillar extending from surface */}
+                <CylinderGraphics
+                  length={120000}
+                  topRadius={8000}
+                  bottomRadius={12000}
+                  material={Cesium.Color.fromCssColorString('#3D8B7A').withAlpha(0.7)}
+                  outline
+                  outlineColor={Cesium.Color.fromCssColorString('#3D8B7A')}
+                  outlineWidth={2}
+                  numberOfVerticalLines={8}
+                />
+                {/* Glow billboard above pillar */}
                 <BillboardGraphics
-                  image="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='20' height='60'><defs><linearGradient id='g' x1='0' y1='0' x2='0' y2='1'><stop offset='0' stop-color='%233D8B7A' stop-opacity='1'/><stop offset='1' stop-color='%233D8B7A' stop-opacity='0.1'/></linearGradient></defs><rect x='6' y='0' width='8' height='60' rx='4' fill='url(%23g)'/><circle cx='10' cy='4' r='6' fill='%233D8B7A' opacity='0.9'/></svg>"
-                  scale={1.2}
+                  image="data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24'><circle cx='12' cy='12' r='10' fill='%233D8B7A' opacity='0.3'/><circle cx='12' cy='12' r='5' fill='%233D8B7A' opacity='0.8'/><circle cx='12' cy='12' r='2' fill='white' opacity='0.9'/></svg>"
+                  scale={1.5}
                   verticalOrigin={Cesium.VerticalOrigin.BOTTOM}
                   disableDepthTestDistance={Number.POSITIVE_INFINITY}
+                  heightReference={Cesium.HeightReference.NONE}
+                  pixelOffset={new Cesium.Cartesian2(0, -80000)}
                 />
                 <LabelGraphics
                   text={hub.name}
-                  font="bold 13px sans-serif"
+                  font="bold 14px sans-serif"
                   fillColor={Cesium.Color.fromCssColorString('#3D8B7A')}
                   outlineColor={Cesium.Color.BLACK}
                   outlineWidth={2}
                   style={Cesium.LabelStyle.FILL_AND_OUTLINE}
                   verticalOrigin={Cesium.VerticalOrigin.BOTTOM}
-                  pixelOffset={new Cesium.Cartesian2(0, -70)}
+                  pixelOffset={new Cesium.Cartesian2(0, -140000)}
                   disableDepthTestDistance={Number.POSITIVE_INFINITY}
                 />
               </Entity>
             ))}
 
-            {/* ─── CLINIC PINS ────────────────────────────────────────────── */}
+            {/* ─── CLINIC PINS (3D color-coded) ───────────────────────────── */}
             {cesiumClinics.map((clinic) => (
               <Entity
                 key={clinic.id}
@@ -406,33 +481,35 @@ export default function ResilienceGlobeView({
               </Entity>
             ))}
 
-            {/* ─── ROUTE ARCS (3D parabolic polylines) ───────────────────── */}
+            {/* ─── ROUTE ARCS (3D parabolic polylines with glow) ──────────── */}
             {cesiumRoutes.map((route) => (
-              <Entity key={route.id} name={`${route.vehicle_id} → ${route.destination}`}>
+              <Entity
+                key={route.id}
+                name={`${route.vehicle_id} → ${route.destination}`}
+                onMouseEnter={() => {
+                  setHoveredRoute(route);
+                }}
+                onMouseMove={(e: any) => {
+                  if (e?.position) {
+                    setHoverPos({ x: e.position.x ?? 0, y: e.position.y ?? 0 });
+                  }
+                }}
+                onMouseLeave={() => setHoveredRoute(null)}
+              >
                 <PolylineGraphics
                   positions={route.arcPositions}
-                  width={route.route_status === 'thermal_breach' ? 3 : 2}
+                  width={route.route_status === 'thermal_breach' ? 4 : 3}
                   material={
-                    route.route_status === 'thermal_warning'
-                      ? new Cesium.PolylineGlowMaterialProperty({
-                          glowPower: 0.15,
-                          color: Cesium.Color.fromCssColorString('#D4A017'),
-                        })
-                      : route.route_status === 'thermal_breach'
-                      ? new Cesium.PolylineGlowMaterialProperty({
-                          glowPower: 0.25,
-                          color: Cesium.Color.fromCssColorString('#C23B3B'),
-                        })
-                      : new Cesium.PolylineGlowMaterialProperty({
-                          glowPower: 0.1,
-                          color: Cesium.Color.fromCssColorString('#3D8B7A'),
-                        })
+                    new Cesium.PolylineGlowMaterialProperty({
+                      glowPower: route.route_status === 'thermal_breach' ? 0.25 : 0.15,
+                      color: route.cesiumColor,
+                    })
                   }
                 />
               </Entity>
             ))}
 
-            {/* ─── DISRUPTION BEACONS (pulsing rings) ─────────────────────── */}
+            {/* ─── DISRUPTION BEACONS (pulsing 3D volumetric rings) ────────── */}
             {cesiumDisruptions.map((d) => (
               <Entity
                 key={d.id}
@@ -441,37 +518,50 @@ export default function ResilienceGlobeView({
                 description={`${d.description}\nSeverity: ${d.severity}\nAffected: ${d.affected_sites.join(', ')}`}
                 onClick={() => handleDisruptionClick(d)}
               >
+                {/* Outer ring — raised above surface */}
                 <EllipseGraphics
-                  semiMajorAxis={120000}
-                  semiMinorAxis={120000}
-                  material={Cesium.Color.fromCssColorString('#C23B3B').withAlpha(0.2)}
+                  semiMajorAxis={150000}
+                  semiMinorAxis={150000}
+                  material={Cesium.Color.fromCssColorString('#C23B3B').withAlpha(0.15)}
                   outline
-                  outlineColor={Cesium.Color.fromCssColorString('#C23B3B').withAlpha(0.6)}
-                  outlineWidth={2}
-                  height={50000}
-                  numberOfVerticalLines={0}
-                />
-                <EllipseGraphics
-                  semiMajorAxis={40000}
-                  semiMinorAxis={40000}
-                  material={Cesium.Color.fromCssColorString('#C23B3B').withAlpha(0.6)}
-                  outline
-                  outlineColor={Cesium.Color.fromCssColorString('#ff4444')}
+                  outlineColor={Cesium.Color.fromCssColorString('#C23B3B').withAlpha(0.5)}
                   outlineWidth={2}
                   height={80000}
+                  numberOfVerticalLines={0}
                 />
+                {/* Middle ring */}
+                <EllipseGraphics
+                  semiMajorAxis={80000}
+                  semiMinorAxis={80000}
+                  material={Cesium.Color.fromCssColorString('#C23B3B').withAlpha(0.3)}
+                  outline
+                  outlineColor={Cesium.Color.fromCssColorString('#ff4444').withAlpha(0.7)}
+                  outlineWidth={2}
+                  height={120000}
+                />
+                {/* Inner filled beacon */}
+                <EllipseGraphics
+                  semiMajorAxis={25000}
+                  semiMinorAxis={25000}
+                  material={Cesium.Color.fromCssColorString('#C23B3B').withAlpha(0.7)}
+                  outline
+                  outlineColor={Cesium.Color.fromCssColorString('#ff6666')}
+                  outlineWidth={1}
+                  height={160000}
+                />
+                {/* Severity label */}
                 <LabelGraphics
                   text={`⚠ ${d.severity.toUpperCase()}`}
-                  font="bold 12px sans-serif"
+                  font="bold 13px sans-serif"
                   fillColor={Cesium.Color.fromCssColorString('#ff6b6b')}
                   outlineColor={Cesium.Color.BLACK}
                   outlineWidth={2}
                   style={Cesium.LabelStyle.FILL_AND_OUTLINE}
                   verticalOrigin={Cesium.VerticalOrigin.BOTTOM}
-                  pixelOffset={new Cesium.Cartesian2(0, -60)}
+                  pixelOffset={new Cesium.Cartesian2(0, -200000)}
                   disableDepthTestDistance={Number.POSITIVE_INFINITY}
                   showBackground
-                  backgroundColor={Cesium.Color.fromCssColorString('#C23B3B').withAlpha(0.7)}
+                  backgroundColor={Cesium.Color.fromCssColorString('#C23B3B').withAlpha(0.8)}
                 />
               </Entity>
             ))}
@@ -542,29 +632,20 @@ export default function ResilienceGlobeView({
             </div>
           )}
 
-          {/* Hover tooltip for routes */}
+          {/* Route hover HUD */}
           {hoveredRoute && (
             <div
               style={{
-                position: 'fixed',
-                left: hoverPos.x + 16,
-                top: hoverPos.y - 10,
+                padding: '10px 16px',
+                borderBottom: '1px solid var(--border-subtle)',
                 background: 'var(--surface-elevated)',
-                border: '1px solid var(--border-subtle)',
-                borderRadius: 8,
-                padding: '10px 14px',
-                fontSize: 12,
-                zIndex: 1000,
-                minWidth: 220,
-                boxShadow: '0 4px 20px rgba(0,0,0,0.4)',
-                pointerEvents: 'none',
               }}
             >
-              <div style={{ fontWeight: 600, marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6 }}>
+              <div style={{ fontWeight: 600, marginBottom: 6, display: 'flex', alignItems: 'center', gap: 6, fontSize: 13 }}>
                 <Truck size={14} color={STATUS_CSS[hoveredRoute.route_status]} />
                 {hoveredRoute.vehicle_id} — {hoveredRoute.vehicle_type}
               </div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '3px 12px', color: 'var(--text-secondary)' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '3px 12px', color: 'var(--text-secondary)', fontSize: 11 }}>
                 <span>Transit:</span>
                 <span>{hoveredRoute.transit_time_hours}h ({hoveredRoute.distance_km}km)</span>
                 <span>Ambient Temp:</span>
@@ -611,7 +692,7 @@ export default function ResilienceGlobeView({
             </button>
           </div>
 
-          {/* Stats */}
+          {/* Network Stats */}
           <div style={{ padding: 16, flex: 1, overflow: 'auto' }}>
             <h4 style={{ fontSize: 12, fontWeight: 600, margin: '0 0 8px 0', display: 'flex', alignItems: 'center', gap: 6 }}>
               <MapPin size={14} color="var(--accent)" />
