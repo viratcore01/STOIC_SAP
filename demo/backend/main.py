@@ -326,6 +326,26 @@ state = DemoState()
 # API ENDPOINTS
 # ============================================================================
 
+@app.get("/")
+async def root():
+    """Root endpoint — returns available API routes."""
+    return {
+        "service": "CCRO Demo Backend",
+        "version": "1.0.0",
+        "endpoints": {
+            "health": "/health",
+            "state": "/api/state",
+            "disruptions": "/api/disruptions",
+            "trigger": "POST /api/disruption/trigger?disruption_id=D-001",
+            "run_allocation": "POST /api/allocation/run?w1=0.4&w2=0.3&w3=0.3",
+            "approve": "POST /api/allocation/approve",
+            "audit_log": "/api/audit/log",
+            "settings": "/api/settings",
+            "docs": "/docs",
+        },
+    }
+
+
 @app.get("/api/state")
 async def get_state():
     """Get the current system state."""
