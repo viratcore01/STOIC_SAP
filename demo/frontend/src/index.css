@@ -724,3 +724,13 @@ body {
     grid-template-columns: 1fr;
   }
 }
+
+/* Hide Leaflet attribution to keep map clean */
+.leaflet-control-attribution { display: none !important; }
+.leaflet-control-zoom { border: none !important; }
+.leaflet-control-zoom a { background: rgba(13,18,26,0.85) !important; color: #4CC9F0 !important; border: 1px solid rgba(140,190,210,0.18) !important; }
+
+@keyframes slideInRight {
+  from { opacity: 0; transform: translateX(30px); }
+  to   { opacity: 1; transform: translateX(0); }
+}

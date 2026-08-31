@@ -167,11 +167,17 @@ export default function ResilienceGlobeView({ addToast }: { addToast: (msg: stri
           </div>
           {hudEntity.kind === 'route' && (
             <>
+              {/* Status badge */}
+              <div style={{ marginBottom: 8, padding: '6px 10px', borderRadius: 6, background: `${routeColorHex(hudEntity.data.route_status)}22`, border: `1px solid ${routeColorHex(hudEntity.data.route_status)}55` }}>
+                <span style={{ color: routeColorHex(hudEntity.data.route_status), fontSize: 11, fontWeight: 700, fontFamily: 'monospace', letterSpacing: '0.08em' }}>
+                  {(hudEntity.data.route_status ?? '—').replace(/_/g, ' ').toUpperCase()}
+                </span>
+              </div>
               <Row label="Vehicle" value={hudEntity.data.vehicle_id ?? '—'} />
               <Row label="Temp" value={`${hudEntity.data.ambient_temperature_celsius ?? '—'}°C`} />
               <Row label="Arrhenius k" value={String(hudEntity.data.arrhenius_decay_rate ?? '—')} />
               <Row label="Shelf Life" value={`${hudEntity.data.remaining_shelf_life_hours ?? '—'}h`} />
-              <Row label="Status" value={(hudEntity.data.route_status ?? '—').replace(/_/g, ' ').toUpperCase()} accent={routeColorHex(hudEntity.data.route_status)} />
+              {hudEntity.data.distance_km && <Row label="Distance" value={`${hudEntity.data.distance_km?.toFixed(0)} km`} />}
             </>
           )}
           {hudEntity.kind === 'clinic' && (
@@ -703,25 +709,25 @@ const GLASS = 'rgba(13, 18, 26, 0.82)';
 const BORDER = 'rgba(140, 190, 210, 0.18)';
 
 const S: Record<string, React.CSSProperties> = {
-  root: { position: 'relative', width: '100vw', height: 'calc(100vh - 60px)', background: '#05070A', overflow: 'hidden', fontFamily: 'Inter, system-ui, sans-serif' },
-  topBar: { position: 'absolute', top: 16, left: 20, display: 'flex', flexDirection: 'column', gap: 4, pointerEvents: 'none', zIndex: 10 },
+  root: { position: 'relative', width: '100%', height: 'calc(100vh - 60px - 64px)', background: '#05070A', overflow: 'hidden', fontFamily: 'Inter, system-ui, sans-serif', borderRadius: 12 },
+  topBar: { position: 'absolute', top: 16, left: 16, display: 'flex', flexDirection: 'column', gap: 4, pointerEvents: 'none', zIndex: 10 },
   topBarTitle: { color: '#E8F1F5', fontSize: 14, fontWeight: 700, letterSpacing: '0.14em' },
   topBarSub: { color: '#7C93A3', fontSize: 10, letterSpacing: '0.08em', fontFamily: 'monospace' },
   errorBanner: { position: 'absolute', top: 60, left: '50%', transform: 'translateX(-50%)', background: 'rgba(255,59,59,0.15)', border: '1px solid rgba(255,59,59,0.4)', color: '#FF8A8A', fontSize: 12, padding: '8px 14px', borderRadius: 8, fontFamily: 'monospace', backdropFilter: 'blur(6px)', zIndex: 30 },
-  hud: { position: 'absolute', top: 16, right: 20, width: 300, background: GLASS, border: `1px solid ${BORDER}`, borderRadius: 10, padding: '14px 16px', backdropFilter: 'blur(14px)', boxShadow: '0 8px 32px rgba(0,0,0,0.45)', zIndex: 20 },
+  hud: { position: 'absolute', top: 16, right: 16, width: 320, maxHeight: 'calc(100% - 32px)', overflowY: 'auto', background: GLASS, border: `1px solid ${BORDER}`, borderRadius: 12, padding: '16px 18px', backdropFilter: 'blur(14px)', boxShadow: '0 8px 32px rgba(0,0,0,0.45)', zIndex: 20, animation: 'slideInRight 0.25s ease-out' },
   hudHeader: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, borderBottom: `1px solid ${BORDER}`, paddingBottom: 8 },
   hudKind: { color: '#4CC9F0', fontSize: 11, fontWeight: 700, letterSpacing: '0.12em', fontFamily: 'monospace' },
   hudClose: { background: 'none', border: 'none', color: '#7C93A3', fontSize: 18, lineHeight: 1, cursor: 'pointer' },
   hudRow: { display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', padding: '4px 0', gap: 12 },
   hudRowLabel: { color: '#8FA3B3', fontSize: 11 },
   hudRowValue: { color: '#E8F1F5', fontSize: 12, fontWeight: 600, textAlign: 'right' as const },
-  whatIf: { position: 'absolute', top: 16, right: 336, width: 320, maxHeight: 360, overflowY: 'auto', background: GLASS, border: `1px solid ${BORDER}`, borderRadius: 10, padding: '14px 16px', backdropFilter: 'blur(14px)', boxShadow: '0 8px 32px rgba(0,0,0,0.45)', zIndex: 20 },
-  governance: { position: 'absolute', bottom: 16, left: 20, width: 300, background: GLASS, border: `1px solid ${BORDER}`, borderRadius: 10, padding: '12px 16px', backdropFilter: 'blur(14px)', boxShadow: '0 8px 32px rgba(0,0,0,0.45)', zIndex: 20 },
+  whatIf: { position: 'absolute', top: 16, right: 352, width: 340, maxHeight: 'calc(100% - 32px)', overflowY: 'auto', background: GLASS, border: `1px solid ${BORDER}`, borderRadius: 12, padding: '16px 18px', backdropFilter: 'blur(14px)', boxShadow: '0 8px 32px rgba(0,0,0,0.45)', zIndex: 20, animation: 'slideInRight 0.25s ease-out' },
+  governance: { position: 'absolute', bottom: 16, left: 16, width: 300, background: GLASS, border: `1px solid ${BORDER}`, borderRadius: 12, padding: '12px 16px', backdropFilter: 'blur(14px)', boxShadow: '0 8px 32px rgba(0,0,0,0.45)', zIndex: 20 },
   govLabel: { color: '#7C93A3', fontSize: 10, letterSpacing: '0.1em', fontFamily: 'monospace' },
   govHash: { color: '#4CC9F0', fontSize: 12, fontFamily: 'monospace', margin: '4px 0 6px' },
   approveBtn: { width: '100%', padding: '10px 0', background: 'linear-gradient(180deg, #1B4A5A, #0F2E38)', border: '1px solid rgba(76,201,240,0.5)', color: '#E8F1F5', fontSize: 11, fontWeight: 700, letterSpacing: '0.06em', borderRadius: 6, cursor: 'pointer' },
   approveBtnDone: { background: 'linear-gradient(180deg, #1B5A38, #0F3822)', border: '1px solid rgba(62,213,152,0.6)', color: '#B7F5D8' },
-  legend: { position: 'absolute', bottom: 16, right: 20, background: GLASS, border: `1px solid ${BORDER}`, borderRadius: 10, padding: '10px 14px', backdropFilter: 'blur(14px)', display: 'flex', flexDirection: 'column', gap: 6, zIndex: 20 },
+  legend: { position: 'absolute', bottom: 16, right: 16, background: GLASS, border: `1px solid ${BORDER}`, borderRadius: 12, padding: '10px 14px', backdropFilter: 'blur(14px)', display: 'flex', flexDirection: 'column', gap: 6, zIndex: 20 },
   legendRow: { display: 'flex', alignItems: 'center', gap: 8, color: '#B8CBD6', fontSize: 11 },
   legendDot: { width: 8, height: 8, borderRadius: '50%', display: 'inline-block' },
 };
